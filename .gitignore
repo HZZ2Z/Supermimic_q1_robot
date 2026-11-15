@@ -1,0 +1,47 @@
+# Local runs, weights and diagnostic output
+logs/
+outputs/
+版本记录/
+wandb/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.log
+MUJOCO_LOG.TXT
+
+# Raw recordings; curated demos are versioned separately on main
+video/
+videos/
+*.webm
+*.mp4
+!docs/assets/demos/*.mp4
+
+# Python and environment caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.venv*/
+
+# Local tools and credentials
+.DS_Store
+.agents/
+.codex/
+.aws/
+.claude/
+.vscode/
+.env
+.env.*
+.netrc
+*.netrc
+server2.json
+**/id_rsa
+**/id_ed25519
+.design/
+docs/superpowers/
+
+# Legacy dangling link to the removed 4v4 course
+shared/q1-mujoco/resources/q1_description/q1_4v4.xml

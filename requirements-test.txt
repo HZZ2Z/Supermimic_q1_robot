@@ -1,0 +1,4 @@
+-r requirements.txt
+# Independent numerical/URDF reference checks for shared MuJoCo assets.
+scipy==1.17.1
+pin==4.1.0
