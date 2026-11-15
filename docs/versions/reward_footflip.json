@@ -1,0 +1,224 @@
+{
+  "version": "reward_footflip",
+  "date": "2026-11-15",
+  "source_run": "run-20261115-160417",
+  "checkpoint": "checkpoint-002100.pt",
+  "checkpoint_sha256": "ecb526e6f1c14ec56d25e24b8d69190f8b77ce282eec16f98745cdaa73beb8c7",
+  "baseline_checkpoint_sha256": "e3b30520c099ab451da069ee69919922b0aca8e5c6015cf759adcc0733c3a480",
+  "evaluation_device": "cpu",
+  "seed": 20261103,
+  "comparison_case": "nominal-01",
+  "baseline": {
+    "nominal-01": {
+      "case_id": "nominal-01",
+      "reference_id": "nominal-01:6c49b6df27172d3daf00348849418592e893797908a07543d14b0b6f6f3d51a3",
+      "steps": 675,
+      "endpoint_distance_m": 0.011236786677306435,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.027310301904735854,
+      "foot_contact_time_s": [
+        8.11599999999938,
+        8.945999999999657
+      ],
+      "foot_slip_mean_m_s": 0.17265859319994978,
+      "foot_slip_rms_m_s": 0.4029624324380118,
+      "foot_slip_fraction": 0.3047708357754169,
+      "route_success": true,
+      "success": false
+    },
+    "eval-01": {
+      "case_id": "eval-01",
+      "reference_id": "eval-01:42843e377675f214aff6d4a0d1bbc139a566927b1962cac992271ab550b90338",
+      "steps": 671,
+      "endpoint_distance_m": 0.03687245957370389,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.03581511241021357,
+      "foot_contact_time_s": [
+        8.225999999999416,
+        8.969999999999665
+      ],
+      "foot_slip_mean_m_s": 0.17358929030071404,
+      "foot_slip_rms_m_s": 0.40420635850011366,
+      "foot_slip_fraction": 0.2919283554315049,
+      "route_success": true,
+      "success": false
+    },
+    "straight": {
+      "case_id": "straight",
+      "reference_id": "straight:4002294f66aded795eecb04f2c943a1a86fd95e66dc0ff66075bdef040dc8485",
+      "steps": 198,
+      "endpoint_distance_m": 0.054983440083811,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.03562972036629031,
+      "foot_contact_time_s": [
+        2.4819999999999482,
+        2.6139999999999337
+      ],
+      "foot_slip_mean_m_s": 0.13529113673839155,
+      "foot_slip_rms_m_s": 0.35533662492346185,
+      "foot_slip_fraction": 0.24882260596546904,
+      "route_success": true,
+      "success": false
+    },
+    "left_turn": {
+      "case_id": "left_turn",
+      "reference_id": "left_turn:43d19be7b0a63bd4ad47249b958c5fff6482dd5fd4a83872ff2008f3d61c462a",
+      "steps": 298,
+      "endpoint_distance_m": 0.023510024873892966,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.03307539035491199,
+      "foot_contact_time_s": [
+        4.4179999999997355,
+        4.173999999999762
+      ],
+      "foot_slip_mean_m_s": 0.15156619818666925,
+      "foot_slip_rms_m_s": 0.35890546617594143,
+      "foot_slip_fraction": 0.2842178770949889,
+      "route_success": true,
+      "success": false
+    },
+    "right_turn": {
+      "case_id": "right_turn",
+      "reference_id": "right_turn:b5bb2403ee13810ae265e1c7495d537270c62fe2f94e1d4a690f4b8a3369aca7",
+      "steps": 298,
+      "endpoint_distance_m": 0.03259981511145987,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.03201851418524277,
+      "foot_contact_time_s": [
+        4.385999999999739,
+        4.037999999999777
+      ],
+      "foot_slip_mean_m_s": 0.10878737867503488,
+      "foot_slip_rms_m_s": 0.28511475392970576,
+      "foot_slip_fraction": 0.2226970560304023,
+      "route_success": true,
+      "success": false
+    }
+  },
+  "checkpoint_002100": {
+    "nominal-01": {
+      "case_id": "nominal-01",
+      "reference_id": "nominal-01:6c49b6df27172d3daf00348849418592e893797908a07543d14b0b6f6f3d51a3",
+      "steps": 675,
+      "endpoint_distance_m": 0.023181418718817882,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.026875999749792698,
+      "foot_contact_time_s": [
+        8.211999999999412,
+        8.951999999999659
+      ],
+      "foot_slip_mean_m_s": 0.0909824352019832,
+      "foot_slip_rms_m_s": 0.27804433911382725,
+      "foot_slip_fraction": 0.16825914705197847,
+      "route_success": true,
+      "success": true
+    },
+    "eval-01": {
+      "case_id": "eval-01",
+      "reference_id": "eval-01:42843e377675f214aff6d4a0d1bbc139a566927b1962cac992271ab550b90338",
+      "steps": 671,
+      "endpoint_distance_m": 0.02365370237654281,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.023432392326727277,
+      "foot_contact_time_s": [
+        8.349999999999458,
+        8.937999999999654
+      ],
+      "foot_slip_mean_m_s": 0.09820619534865802,
+      "foot_slip_rms_m_s": 0.3042795097720846,
+      "foot_slip_fraction": 0.1636973623322621,
+      "route_success": true,
+      "success": true
+    },
+    "straight": {
+      "case_id": "straight",
+      "reference_id": "straight:4002294f66aded795eecb04f2c943a1a86fd95e66dc0ff66075bdef040dc8485",
+      "steps": 198,
+      "endpoint_distance_m": 0.035786844653323796,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.023907279343345234,
+      "foot_contact_time_s": [
+        2.4639999999999502,
+        2.501999999999946
+      ],
+      "foot_slip_mean_m_s": 0.08959742291138038,
+      "foot_slip_rms_m_s": 0.2839545171112438,
+      "foot_slip_fraction": 0.1461941200161127,
+      "route_success": true,
+      "success": true
+    },
+    "left_turn": {
+      "case_id": "left_turn",
+      "reference_id": "left_turn:43d19be7b0a63bd4ad47249b958c5fff6482dd5fd4a83872ff2008f3d61c462a",
+      "steps": 298,
+      "endpoint_distance_m": 0.0331177108376824,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.024393230266382144,
+      "foot_contact_time_s": [
+        4.475999999999729,
+        4.0639999999997745
+      ],
+      "foot_slip_mean_m_s": 0.12658760396930138,
+      "foot_slip_rms_m_s": 0.3280933648847351,
+      "foot_slip_fraction": 0.2332552693208568,
+      "route_success": true,
+      "success": false
+    },
+    "right_turn": {
+      "case_id": "right_turn",
+      "reference_id": "right_turn:b5bb2403ee13810ae265e1c7495d537270c62fe2f94e1d4a690f4b8a3369aca7",
+      "steps": 298,
+      "endpoint_distance_m": 0.04371335348564209,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.02696766912824529,
+      "foot_contact_time_s": [
+        3.9779999999997835,
+        4.265999999999752
+      ],
+      "foot_slip_mean_m_s": 0.08160510529155918,
+      "foot_slip_rms_m_s": 0.2532093043512065,
+      "foot_slip_fraction": 0.16618146530811234,
+      "route_success": true,
+      "success": true
+    }
+  },
+  "accepted_cases": 4,
+  "total_cases": 5,
+  "training_changes": {
+    "foot_slip_weight": 0.05,
+    "foot_landing_weight": 0.02,
+    "actor_collection_interval": 25,
+    "actor_checkpoint_interval": 50
+  },
+  "limits": "Single-seed fixed-scene evaluation; no hardware validation or isolated reward ablation."
+}
