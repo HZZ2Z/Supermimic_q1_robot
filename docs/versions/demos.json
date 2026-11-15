@@ -1,0 +1,56 @@
+[
+  {
+    "source": "版本记录/baseline/best.webm",
+    "crop": "1706:960:66:70",
+    "start": 15.302,
+    "end": 30.419,
+    "duration": 15.117,
+    "episode": 2,
+    "name": "baseline",
+    "case": "nominal-01",
+    "source_sha256": "015f274041e1774cec668dc032d0c8945571d49d2ff9454bf023c317b1fa2ca7",
+    "speed": "original recording speed; no time warp",
+    "output_video": "docs/assets/demos/baseline-nominal-01.mp4",
+    "output_preview": "docs/assets/demos/baseline-nominal-01.gif",
+    "video_sha256": "2eb08864e25fc4f322993b482f20a914ab8813b11e072295686a04f14f71f033",
+    "preview_sha256": "7e434234aa7e2e1ff39be091b5a9f762981f706c36eb21dcf9c3281d2b2e7f5a",
+    "resolution": [
+      1280,
+      720
+    ],
+    "fps": 30,
+    "preview_resolution": [
+      640,
+      360
+    ],
+    "preview_fps": 12,
+    "source_view_limit": "The robot partly leaves the original viewport near the end; the full episode interval is retained."
+  },
+  {
+    "source": "logs/q1-pole-weaving/run-20261115-160417/checkpoint-002100.webm",
+    "crop": "1706:960:116:120",
+    "start": 16.319,
+    "end": 33.473000000000006,
+    "duration": 17.154000000000007,
+    "episode": 2,
+    "name": "2100",
+    "case": "nominal-01",
+    "source_sha256": "ba81033e0fa095dc6add386d10cfd3952892a0e54417192be99e0647196014fd",
+    "speed": "original recording speed; no time warp",
+    "output_video": "docs/assets/demos/reward-footflip-20261115-2100.mp4",
+    "output_preview": "docs/assets/demos/reward-footflip-20261115-2100.gif",
+    "video_sha256": "176f20232df7f51d88d4d729e9912f00661113324ccb37b6d7a3a800e98bf5f2",
+    "preview_sha256": "2aa014a0fcee448a6da96c92d368742e448e25977686e98ef28b5c889954dbf9",
+    "resolution": [
+      1280,
+      720
+    ],
+    "fps": 30,
+    "preview_resolution": [
+      640,
+      360
+    ],
+    "preview_fps": 12,
+    "source_view_limit": "The robot partly leaves the original viewport near the end; the full episode interval is retained."
+  }
+]

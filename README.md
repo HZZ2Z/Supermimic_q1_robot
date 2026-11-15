@@ -38,3 +38,5 @@ python -m pole_task.training --preflight-only
 训练前按[环境指南](docs/setup.md)与[资产说明](docs/pole-weaving.md)准备 warmup 权重。模型权重、原始录像和运行日志不随 Git 分发。第三方源码已随分支保存，包含本地修改，无需初始化子模块。
 
 详细说明：[奖励与采样](docs/foot-contact-rewards.md) · [训练／评估／回放](courses/pole-weaving/README.zh-CN.md) · [开发日志](docs/开发日志.md) · [许可证](LICENSE)
+
+验证：相关测试 100 项通过，1 项可选资产检查跳过，1 项优化器更新测试排除；本次发布未启动训练。
