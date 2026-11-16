@@ -1,0 +1,82 @@
+{
+  "version": "V1",
+  "date": "2026-11-16",
+  "parent_version": "reward_footflip",
+  "source_run": "logs/q1-pole-weaving/B2200_2500",
+  "source_checkpoint": "best.pt",
+  "checkpoint_update": 2400,
+  "checkpoint_sha256": "575cc1fd81cf56f1258e61b4e7b2bddc05681922541146a7051a13442b042c05",
+  "local_checkpoint": "版本记录/V1/best.pt",
+  "training_config": "experiments/reward-sampling/B.json",
+  "training_config_sha256": "4229ee3b9d58627dbcd8551651abc8f92d67e9a4e698a4105895c9c6bf6596ea",
+  "mainline_config": "courses/pole-weaving/pole_task/config.json",
+  "mainline_config_sha256": "05aa3368c6199f5b4e545499783729c9edee3e059f466791e21475c41a32883d",
+  "legacy_mainline_config": "experiments/reward-sampling/pre-V1-main.json",
+  "training_recipe": {
+    "initialization": "registered source warmup",
+    "seed": 20261103,
+    "warmup_updates": 2000,
+    "actor_updates_at_selected_checkpoint": 400,
+    "actor_start_sampling": "stratified_4",
+    "actor_replay_batches": 2,
+    "actor_collection_interval": 25,
+    "evaluation_interval": 25,
+    "actor_checkpoint_interval": 50,
+    "actor_learning_rate": 1e-05,
+    "model_learning_rate": 0.0001,
+    "critic_learning_rate": 0.0001,
+    "foot_slip_weight": 0.05,
+    "foot_landing_weight": 0.02,
+    "arm_joint_weight": 0.05
+  },
+  "lineage": [
+    {
+      "run": "B-stratified-to1000",
+      "start_update": 0,
+      "end_update": 1000
+    },
+    {
+      "run": "B-stratified-from1000-to2200",
+      "start_update": 1000,
+      "end_update": 2200
+    },
+    {
+      "run": "B2200_2500",
+      "start_update": 2200,
+      "end_update": 2500,
+      "selected_update": 2400
+    }
+  ],
+  "evaluation": {
+    "file": "docs/versions/V1-evaluation.json",
+    "device": "cpu",
+    "seed": 20261103,
+    "passed_cases": 5,
+    "total_cases": 5,
+    "all_routes_complete": true,
+    "falls": 0,
+    "pole_collisions": 0
+  },
+  "demo": {
+    "output_video": "docs/assets/demos/V1-B2400-nominal-01.mp4",
+    "output_preview": "docs/assets/demos/V1-B2400-nominal-01.gif",
+    "video_sha256": "48c1f55137e478d07ef42619939084ea5a81cfe46b43809dfac1fb8b3c02ddec",
+    "preview_sha256": "d3d0f4b4e43ea14c9df6ed1a37c1b4a37c241a6bc5b6ad3f6701d8d3a4f2ff12",
+    "duration": 13.5,
+    "fps": 50,
+    "method": "existing run_source_episode, offscreen MuJoCo viewer callback; one complete rollout"
+  },
+  "limitations": [
+    "Single-seed fixed-condition simulation; no hardware validation.",
+    "Compared with B-2200, straight reloading integral increases 13.6%.",
+    "Left-turn and straight loaded time about 7% lower than original footflip-2100.",
+    "Resuming reconstructs RNG/replay; a fresh uninterrupted default-config run is not a bitwise reproduction of this checkpoint."
+  ],
+  "local_source_archive": {
+    "path": "版本记录/V1/source.tar.gz",
+    "sha256": "be60675b33484dbb4c02a15d00a738c2e0254c9b18cce6f7a371445d2b97652a",
+    "includes": "runtime sources, resources, configs, tests and dependency files; weights excluded"
+  },
+  "historical_source_run": "logs/q1-pole-weaving/experiment-B/B2200_2500",
+  "path_migration": "版本记录/训练路径迁移.json"
+}

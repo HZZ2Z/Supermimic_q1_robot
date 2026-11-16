@@ -3,20 +3,22 @@
 Training starts only from the registered source warmup checkpoint.  Every run
 records the source revision, warmup hash, resolved recipe, data split, and
 randomization/actor-stage transition in ``identity.json`` and in each
-checkpoint.  A run is bounded by the resolved 2,500-update recipe, an optional
-caller limit, and the configured environment-step budget; there is no fallback
+checkpoint.  A run defaults to the registered 2,500-update recipe; Actor resumes
+may explicitly extend that budget, with the extension recorded separately.
+Caller and environment-step limits still apply; there is no fallback
 to the soccer expert checkpoint or the source task's final actor.
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 import math
 from pathlib import Path
 import random
+import re
 import time
 
 import numpy as np
@@ -42,7 +44,9 @@ from .source_recipe import (
     resolve_source_recipe,
 )
 from .source_runtime import (
-    SOURCE_REWARD_TUNING,
+    configured_reward_tuning,
+    validate_start_sampling,
+    stratified_start_frame,
     SourceEpisode,
     SourcePoleSuperMimic,
     evaluate_source_cases,
@@ -141,7 +145,7 @@ def _checkpoint_identity(
         "format": SOURCE_CHECKPOINT_FORMAT,
         "profile": "pole-weaving",
         "foot_contact_version": FOOT_CONTACT_VERSION,
-        "reward_tuning": asdict(SOURCE_REWARD_TUNING),
+        "reward_tuning": asdict(configured_reward_tuning(config)),
         "seed": seed,
         "device": device,
         "config_path": str(config_path),
@@ -188,6 +192,65 @@ def _make_optimizers(algorithm, recipe: SourceRecipe) -> None:
         setattr(algorithm, f"{name}_optimizer", optimizer)
 
 
+def _resume_actor_lr_scale(payload: dict | None, requested: float | None) -> float:
+    inherited = payload["identity"].get("actor_learning_rate_scale", 1.0) if payload else 1.0
+    for value in (inherited, requested):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or not 0 < value <= 1
+        ):
+            raise ValueError("Actor learning-rate scale must be finite and in (0, 1]")
+    if inherited is None:
+        raise ValueError("Checkpoint actor learning-rate scale cannot be null")
+    if (requested is not None or inherited != 1.0) and (
+        payload is None or payload["stage"] != "actor"
+    ):
+        raise ValueError("Actor learning-rate scaling requires an Actor-stage resume checkpoint")
+    return float(inherited if requested is None else requested)
+
+
+def _resume_actor_patience(payload: dict | None) -> int:
+    if payload is None:
+        return 0
+    scope = payload["identity"].get("patience_scope")
+    if scope is None:
+        # Legacy counters mix warmup and Actor evaluations; their split is not recoverable.
+        return 0
+    if scope != "actor":
+        raise ValueError(f"Unsupported checkpoint patience scope: {scope!r}")
+    patience = payload.get("patience")
+    if isinstance(patience, bool) or not isinstance(patience, int) or patience < 0:
+        raise ValueError("Checkpoint Actor patience must be a nonnegative integer")
+    return patience if payload["stage"] == "actor" else 0
+
+
+def _runtime_recipe(
+    recipe: SourceRecipe, payload: dict | None = None, actor_end_update: int | None = None,
+) -> SourceRecipe:
+    """Extend only Actor duration; keep the registered recipe unchanged in checkpoints."""
+    inherited = payload["identity"].get("actor_end_update", recipe.total_updates) if payload else recipe.total_updates
+    for value in (inherited, actor_end_update):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < recipe.total_updates
+        ):
+            raise ValueError(f"Actor end update must be an integer >= {recipe.total_updates}")
+    if inherited is None:
+        raise ValueError("Checkpoint Actor end update cannot be null")
+    if (actor_end_update is not None or inherited > recipe.total_updates) and (
+        payload is None or payload["stage"] != "actor"
+    ):
+        raise ValueError("Actor budget extension requires an Actor-stage resume checkpoint")
+    if actor_end_update is not None and actor_end_update < inherited:
+        raise ValueError("Actor end update cannot shrink the checkpoint budget")
+    end = inherited if actor_end_update is None else actor_end_update
+    if end == recipe.total_updates:
+        return recipe
+    warmup, actor = recipe.stages
+    return replace(recipe, stages=(warmup, replace(
+        actor, updates=end - actor.start_update + 1, end_update=end,
+    )))
+
+
 def validate_resume_payload(
     payload: dict,
     *,
@@ -211,7 +274,7 @@ def validate_resume_payload(
     if identity.get("profile") != "pole-weaving":
         raise ValueError("Resume checkpoint profile is not pole-weaving")
     if (identity.get("foot_contact_version") != FOOT_CONTACT_VERSION
-            or identity.get("reward_tuning") != asdict(SOURCE_REWARD_TUNING)):
+            or identity.get("reward_tuning") != asdict(configured_reward_tuning(config))):
         raise ValueError("Resume checkpoint foot-contact physics or reward tuning differs from this run")
     if identity.get("source_final_checkpoint_loaded") is not False:
         raise ValueError("Resume checkpoint does not prove the source final actor was never loaded")
@@ -228,18 +291,21 @@ def validate_resume_payload(
         raise ValueError("Resume checkpoint configuration differs from the requested pole run")
     if payload.get("recipe") != recipe.to_dict():
         raise ValueError("Resume checkpoint training recipe differs from the registered source recipe")
+    runtime_recipe = _runtime_recipe(recipe, payload)
     update = payload.get("update")
-    if not isinstance(update, int) or not 0 <= update <= recipe.total_updates:
+    if isinstance(update, bool) or not isinstance(update, int) or not 0 <= update <= runtime_recipe.total_updates:
         raise ValueError(
-            f"Resume update must be an integer in 0..{recipe.total_updates}, got {update!r}"
+            f"Resume update must be an integer in 0..{runtime_recipe.total_updates}, got {update!r}"
         )
     stage = payload.get("stage")
-    expected = recipe.stage_for_update(min(update + 1, recipe.total_updates)).name
+    expected = runtime_recipe.stage_for_update(max(1, update)).name
     if stage != expected:
         raise ValueError(
             f"Resume checkpoint stage {stage!r} disagrees with update {update} "
             f"(expected {expected!r})"
         )
+    _resume_actor_lr_scale(payload, None)
+    _resume_actor_patience(payload)
     return update
 
 
@@ -251,6 +317,7 @@ def load_resume_checkpoint(
     recipe: SourceRecipe,
     manifest_path: Path,
     source_manifest_path: Path,
+    actor_end_update: int | None = None,
 ) -> tuple[dict, int]:
     path = Path(path).expanduser().resolve()
     if not path.is_file():
@@ -264,9 +331,10 @@ def load_resume_checkpoint(
         manifest_path=manifest_path,
         source_manifest_path=source_manifest_path,
     )
-    if update >= recipe.total_updates:
+    runtime_recipe = _runtime_recipe(recipe, payload, actor_end_update)
+    if update >= runtime_recipe.total_updates:
         raise ValueError(
-            f"Resume checkpoint has already completed all {recipe.total_updates} updates"
+            f"Resume checkpoint has already completed all {runtime_recipe.total_updates} updates"
         )
     return payload, update
 
@@ -405,9 +473,14 @@ def _collect_episodes(
     episode_counts: dict[str, int],
     action_noise: float,
     budget: TrainingBudget,
+    config: dict | None = None,
+    collection_update: int = 0,
 ) -> list[SourceEpisode]:
     clip_by_case = {case.case_id: index for index, case in enumerate(motions.cases)}
     episodes: list[SourceEpisode] = []
+    config = config or {}
+    mode = validate_start_sampling(config)
+    intervals = int(config.get("actor_collection_interval", 25))
     for case in cases:
         count = int(episode_counts.get(case.case_id, 0))
         if count <= 0:
@@ -415,6 +488,10 @@ def _collect_episodes(
         if budget.remaining() <= 0:
             raise RuntimeError("Pole training has no environment-step budget for collection")
         for index in range(count):
+            start = None
+            if stage.actor_updates_enabled and mode == "stratified_4":
+                start = stratified_start_frame(case.control_steps,
+                    (collection_update - stage.start_update) // intervals, count, index, seed + index)
             episode = run_source_episode(
                 actor,
                 robot,
@@ -422,19 +499,29 @@ def _collect_episodes(
                 case,
                 clip_by_case[case.case_id],
                 run_dir / f"collection-{case.case_id}.xml",
-                start_frame=None,
+                start_frame=start,
                 seed=seed + index,
                 device=device,
                 action_noise=action_noise,
                 observation_noise=True,
                 clean_policy_actions=True,
-                reward_tuning=SOURCE_REWARD_TUNING,
+                reward_tuning=configured_reward_tuning(config),
                 randomize=stage.randomize,
             )
             budget.charge(episode.steps)
             episodes.append(episode)
     if not episodes:
         raise ValueError("Pole training collection produced no episodes")
+    with (run_dir / "collection.jsonl").open("a") as stream:
+        for episode in episodes:
+            flags = np.asarray([t["boundary"] for t in episode.transitions], dtype=bool)
+            windows = {}
+            for name, length, offset in (("model", 8, 0), ("policy", 10, 9)):
+                windows[name] = [int(episode.frames[i + offset]) for i in range(max(0, len(flags) - length + 1))
+                                 if not flags[i:i + length - 1].any()]
+            stream.write(json.dumps({"collection_update": collection_update, "case_id": episode.case.case_id,
+                "start_frame": episode.start_frame, "end_frame_exclusive": int(episode.frames[-1]) + 1,
+                "steps": episode.steps, "valid_window_frames": windows}) + "\n")
     return episodes
 
 
@@ -480,13 +567,22 @@ def train_source(
     max_updates: int | None = None,
     episode_counts: dict[str, int] | None = None,
     device: str | None = None,
+    resume_actor_lr_scale: float | None = None,
+    actor_end_update: int | None = None,
+    run_name: str | None = None,
 ) -> Path:
     """Train a project pole policy from the registered source warmup.
 
-    ``max_updates`` and ``episode_counts`` exist for bounded smoke runs; the
-    production budget remains the resolved source recipe.
+    ``max_updates`` caps this invocation; ``actor_end_update`` explicitly
+    extends an Actor resume without changing the registered source recipe.
     """
     config_path = Path(config_path).resolve()
+    if run_name is not None and re.fullmatch(r"\w[\w.-]{0,95}", run_name) is None:
+        raise ValueError("Run name must be 1..96 letters, digits, underscores, dots or hyphens; start with a letter, digit or underscore")
+    if resume_checkpoint is None:
+        _resume_actor_lr_scale(None, resume_actor_lr_scale)
+        if actor_end_update is not None:
+            raise ValueError("Actor budget extension requires an Actor-stage resume checkpoint")
     report = preflight(config_path)
     if not report["training_ready"]:
         raise ValueError(report["training_blocker"] or "Pole training preflight failed")
@@ -500,11 +596,28 @@ def train_source(
     manifest_path = project_path(config["manifest"]).resolve()
     source_manifest_path = project_path(config["source_manifest"]).resolve()
     recipe = resolve_source_recipe(config_path, project_root=root)
+    validate_start_sampling(config)
+    configured_reward_tuning(config)
+    resume_payload, completed_updates = None, 0
+    if resume_checkpoint is not None:
+        resume_payload, completed_updates = load_resume_checkpoint(
+            resume_checkpoint,
+            config=config,
+            config_path=config_path,
+            recipe=recipe,
+            manifest_path=manifest_path,
+            source_manifest_path=source_manifest_path,
+            actor_end_update=actor_end_update,
+        )
+        if max_updates is not None and max_updates <= completed_updates:
+            raise ValueError("max_updates must exceed the resume checkpoint update")
+    runtime_recipe = _runtime_recipe(recipe, resume_payload, actor_end_update)
     if max_updates is not None:
-        if not 0 < int(max_updates) <= recipe.total_updates:
+        if not 0 < int(max_updates) <= runtime_recipe.total_updates:
             raise ValueError(
-                f"max_updates must be in 1..{recipe.total_updates}, got {max_updates}"
+                f"max_updates must be in 1..{runtime_recipe.total_updates}, got {max_updates}"
             )
+    actor_lr_scale = _resume_actor_lr_scale(resume_payload, resume_actor_lr_scale)
     # Strictly load after all file/profile validation; no run directory exists
     # yet, so a missing/corrupt source artifact cannot leave a partial run.
     loaded = load_source_pole(source_manifest_path, device="cpu")
@@ -528,9 +641,9 @@ def train_source(
         config, manifest_path=manifest_path
     )
     output_root = (root / config["output_root"]).resolve()
-    run_dir = output_root / time.strftime("run-%Y%m%d-%H%M%S")
+    run_dir = output_root / (run_name if run_name is not None else time.strftime("run-%Y%m%d-%H%M%S"))
     suffix = 0
-    while run_dir.exists():
+    while run_name is None and run_dir.exists():
         suffix += 1
         run_dir = output_root / f"{time.strftime('run-%Y%m%d-%H%M%S')}-{suffix}"
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -552,7 +665,7 @@ def train_source(
             critic,
             learning_rate=recipe.model_optimizer.learning_rate,
             horizon=recipe.imagination_horizon,
-            reward_tuning=SOURCE_REWARD_TUNING,
+            reward_tuning=configured_reward_tuning(config),
             clean_policy_actions=recipe.clean_policy_actions,
             normalize_policy_objective=True,
             normalize_model_objective=True,
@@ -562,19 +675,9 @@ def train_source(
         )
         _make_optimizers(algorithm, recipe)
 
-        resume_payload = None
-        completed_updates = 0
         best_score = float("inf")
         patience = 0
-        if resume_checkpoint is not None:
-            resume_payload, completed_updates = load_resume_checkpoint(
-                resume_checkpoint,
-                config=config,
-                config_path=config_path,
-                recipe=recipe,
-                manifest_path=manifest_path,
-                source_manifest_path=source_manifest_path,
-            )
+        if resume_payload is not None:
             actor.load_state_dict(resume_payload["actor"], strict=True)
             world.load_state_dict(resume_payload["model"], strict=True)
             critic.load_state_dict(resume_payload["critic"], strict=True)
@@ -582,7 +685,7 @@ def train_source(
             algorithm.actor_optimizer.load_state_dict(resume_payload["actor_optimizer"])
             algorithm.critic_optimizer.load_state_dict(resume_payload["critic_optimizer"])
             best_score = float(resume_payload.get("best_score", float("inf")))
-            patience = int(resume_payload.get("patience", 0))
+            patience = _resume_actor_patience(resume_payload)
 
         identity = _checkpoint_identity(
             config=config,
@@ -597,6 +700,18 @@ def train_source(
             resume_checkpoint=resume_checkpoint,
         )
         identity["resumed_from_update"] = completed_updates
+        identity["actor_learning_rate_scale"] = actor_lr_scale
+        identity["effective_actor_base_learning_rate"] = recipe.actor_optimizer.learning_rate * actor_lr_scale
+        identity["requested_max_updates"] = max_updates
+        identity["actor_end_update"] = runtime_recipe.total_updates
+        identity["run_name"] = run_dir.name
+        identity["actor_replay_batches"] = 2
+        identity["actor_start_sampling"] = validate_start_sampling(config)
+        identity["patience_scope"] = "actor"
+        identity["initial_actor_patience"] = patience
+        identity["legacy_patience_reset"] = bool(
+            resume_payload is not None and resume_payload["identity"].get("patience_scope") is None
+        )
         atomic_json(run_dir / "identity.json", identity)
         (run_dir / "config.json").write_text(json.dumps(config, indent=2) + "\n")
 
@@ -606,8 +721,8 @@ def train_source(
             counts.update({case_id: int(value) for case_id, value in episode_counts.items()})
         action_noise = float(config.get("action_noise", 0.0))
         next_update = completed_updates + 1
-        current_stage = recipe.stage_for_update(
-            min(next_update, recipe.total_updates)
+        current_stage = runtime_recipe.stage_for_update(
+            min(next_update, runtime_recipe.total_updates)
         )
         if current_stage.freeze_pole_input_columns:
             freeze_pole_input_columns(actor)
@@ -622,22 +737,27 @@ def train_source(
             device=device,
             episode_counts=counts,
             action_noise=action_noise,
-            budget=budget,
+            budget=budget, config=config, collection_update=next_update,
         )
         replay = make_source_replay(episodes, robot, clip_by_case, device=device)
+        episode_batches = [(next_update, episodes)]
         collection_steps = sum(episode.steps for episode in episodes)
         last_collection_update = next_update
+        sampled_model_windows = torch.zeros(len(all_cases), dtype=torch.long, device=device)
+        sampled_policy_windows = torch.zeros_like(sampled_model_windows)
         stop_reason = None
         metrics_path = run_dir / "metrics.jsonl"
-        limit = recipe.total_updates if max_updates is None else int(max_updates)
+        limit = runtime_recipe.total_updates if max_updates is None else int(max_updates)
         evaluation_interval = max(1, int(config.get("evaluation_interval", 25)))
         collection_interval = config.get("actor_collection_interval", 25)
         checkpoint_interval = config.get("actor_checkpoint_interval", 50)
         last_update = completed_updates
         for update in range(next_update, limit + 1):
-            stage = recipe.stage_for_update(update)
+            stage = runtime_recipe.stage_for_update(update)
             if stage.name != current_stage.name:
                 current_stage = stage
+                if stage.actor_updates_enabled:
+                    patience = 0
                 if stage.freeze_pole_input_columns:
                     freeze_pole_input_columns(actor)
             if update != next_update and (
@@ -645,7 +765,7 @@ def train_source(
                 or (stage.actor_updates_enabled
                     and (update - stage.start_update) % collection_interval == 0)
             ):
-                episodes = _collect_episodes(
+                new_episodes = _collect_episodes(
                     actor,
                     robot,
                     motions,
@@ -656,20 +776,27 @@ def train_source(
                     device=device,
                     episode_counts=counts,
                     action_noise=action_noise,
-                    budget=budget,
+                    budget=budget, config=config, collection_update=update,
                 )
+                # Actor batches are bounded; never carry deterministic warmup data across stages.
+                if stage.actor_updates_enabled and update != stage.start_update:
+                    episode_batches = episode_batches[-1:] + [(update, new_episodes)]
+                else:
+                    episode_batches = [(update, new_episodes)]
+                episodes = [episode for _, batch in episode_batches for episode in batch]
                 replay = make_source_replay(episodes, robot, clip_by_case, device=device)
-                collection_steps += sum(episode.steps for episode in episodes)
+                collection_steps += sum(episode.steps for episode in new_episodes)
                 last_collection_update = update
             save_snapshot = stage.actor_updates_enabled and (
                 (update - stage.start_update + 1) % checkpoint_interval == 0
                 or update == stage.end_update or update == limit
             )
             should_evaluate = (
-                update % evaluation_interval == 0 or update == recipe.total_updates
+                update % evaluation_interval == 0 or update == runtime_recipe.total_updates
                 or update == limit or stage.end_update == update
             )
             rates = recipe.optimizer_rates(update - 1)
+            rates["actor"] *= actor_lr_scale
             for name, rate in rates.items():
                 for group in getattr(algorithm, f"{name}_optimizer").param_groups:
                     group["lr"] = rate
@@ -680,12 +807,14 @@ def train_source(
                     window=8,
                     history=1,
                 )
+                sampled_model_windows += torch.bincount(batch.clips, minlength=len(all_cases))
                 metrics.update(algorithm.fit_model(batch))
             policy_batch = replay.sample(
                 recipe.policy_batch_size,
                 window=1,
                 history=SOURCE_HISTORY_FRAMES,
             )
+            sampled_policy_windows += torch.bincount(policy_batch.clips, minlength=len(all_cases))
             metrics.update(
                 algorithm.improve_policy(
                     policy_batch,
@@ -704,10 +833,12 @@ def train_source(
                     "randomize": stage.randomize,
                     "model_learning_rate": rates["model"],
                     "actor_learning_rate": rates["actor"],
+                    "actor_learning_rate_scale": actor_lr_scale,
                     "critic_learning_rate": rates["critic"],
                     "environment_steps": budget.steps,
                     "collection_environment_steps": collection_steps,
                     "replay_transitions": sum(episode.steps for episode in episodes),
+                    "replay_batch_updates": [update for update, _ in episode_batches],
                     "last_collection_update": last_collection_update,
                 }
             )
@@ -728,7 +859,7 @@ def train_source(
                 accepted = source_acceptance(evaluation, config)
                 if accepted and score < best_score:
                     best_score, patience = score, 0
-                else:
+                elif stage.actor_updates_enabled:
                     patience += 1
                 metrics["evaluation"] = evaluation
                 metrics["best_score"] = best_score
@@ -736,6 +867,16 @@ def train_source(
                 metrics["accepted"] = accepted
             if should_evaluate or save_snapshot:
                 metrics["environment_steps"] = budget.steps
+                metrics["replay_case_transitions"] = {
+                    case.case_id: sum(e.steps for e in episodes if e.case.case_id == case.case_id)
+                    for case in all_cases
+                }
+                metrics["sampled_model_windows_by_case"] = dict(zip(
+                    (case.case_id for case in all_cases), sampled_model_windows.tolist(),
+                ))
+                metrics["sampled_policy_windows_by_case"] = dict(zip(
+                    (case.case_id for case in all_cases), sampled_policy_windows.tolist(),
+                ))
                 with metrics_path.open("a") as stream:
                     stream.write(json.dumps(metrics, sort_keys=True) + "\n")
                 payload = checkpoint_payload(
@@ -754,7 +895,8 @@ def train_source(
                     torch.save(payload, run_dir / f"checkpoint-{update:06d}.pt")
                 if should_evaluate and accepted and score <= best_score:
                     torch.save(payload, run_dir / "best.pt")
-                if should_evaluate and patience >= int(config.get("success_patience", 100)):
+                if (should_evaluate and stage.actor_updates_enabled
+                        and patience >= int(config.get("success_patience", 100))):
                     stop_reason = {
                         "reason": "success_patience_exhausted",
                         "update": update,
@@ -785,13 +927,14 @@ def train_source(
                     config=config,
                     identity=identity,
                     update=last_update,
-                    stage=recipe.stage_for_update(last_update),
+                    stage=runtime_recipe.stage_for_update(last_update),
                     best_score=best_score,
                     patience=patience,
                 )
                 torch.save(payload, run_dir / "latest.pt")
         stop_reason = stop_reason or {
-            "reason": "recipe_exhausted" if last_update == recipe.total_updates else "update_limit",
+            "reason": ("extended_budget_exhausted" if runtime_recipe != recipe else "recipe_exhausted")
+            if last_update == runtime_recipe.total_updates else "update_limit",
             "update": last_update,
             "environment_steps": budget.steps,
         }
@@ -828,6 +971,13 @@ def main(argv=None) -> int:
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--resume-checkpoint", type=Path)
     parser.add_argument("--max-updates", type=int)
+    parser.add_argument("--actor-end-update", type=int,
+                        help="Actor resume only: explicitly extend the global budget beyond the registered recipe")
+    parser.add_argument("--run-name", help="Unique output directory name; an existing name is never overwritten")
+    parser.add_argument(
+        "--resume-actor-lr-scale", type=float,
+        help="Actor-stage resume only: scale the registered Actor LR by (0, 1]; defaults to checkpoint scale",
+    )
     args = parser.parse_args(argv)
     if args.preflight_only:
         try:
@@ -842,6 +992,9 @@ def main(argv=None) -> int:
             args.config,
             args.resume_checkpoint,
             max_updates=args.max_updates,
+            resume_actor_lr_scale=args.resume_actor_lr_scale,
+            actor_end_update=args.actor_end_update,
+            run_name=args.run_name,
         )
     )
     return 0

@@ -21,7 +21,7 @@ from supermimic.randomization import (
 )
 
 from .data import CourseCase
-from .foot_contact import CONTACT_FORCE_N, SLIP_SPEED_M_S
+from .foot_contact import CONTACT_FORCE_N, SLIP_SPEED_M_S, foot_slip_phase_metrics
 from .scene import build_course_scene, verify_course_scene
 
 SOURCE_CONTROL_DT = 0.02
@@ -196,6 +196,7 @@ class SourcePoleEnvironment:
         self._contact_jacobian = np.zeros((3, self.model.nv))
         self._contact_force = np.zeros(6)
         self._foot_contact_totals = np.zeros((2, 4))
+        self._foot_contact_samples: list[np.ndarray] = []
         if self.model.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4:
             raise ValueError("Foot contact sampling requires a single-step integrator")
         self.layout = robot.context_layout
@@ -300,6 +301,7 @@ class SourcePoleEnvironment:
         self.collision = False
         self.pole_contacts.clear()
         self._foot_contact_totals.fill(0)
+        self._foot_contact_samples.clear()
         return self.state()
 
     @property
@@ -348,11 +350,13 @@ class SourcePoleEnvironment:
         speeds /= np.maximum(loads, 1e-12)
         speed_squares /= np.maximum(loads, 1e-12)
         loaded = loads > CONTACT_FORCE_N
-        self._foot_contact_totals += self.model.opt.timestep * np.stack(
+        sample = np.stack(
             (loaded, loaded * speeds, loaded * speed_squares,
              loaded & (speeds > SLIP_SPEED_M_S)),
             axis=-1,
         )
+        self._foot_contact_totals += self.model.opt.timestep * sample
+        self._foot_contact_samples.append(sample)
 
     def foot_contact_metrics(self) -> dict:
         """Aggregate over loaded foot-time, counting both feet during double support."""
@@ -362,6 +366,9 @@ class SourcePoleEnvironment:
             "foot_slip_mean_m_s": float(distance / duration) if duration > 0 else None,
             "foot_slip_rms_m_s": float(np.sqrt(squared / duration)) if duration > 0 else None,
             "foot_slip_fraction": float(fast / duration) if duration > 0 else None,
+            "foot_slip_phases": foot_slip_phase_metrics(
+                self._foot_contact_samples, self.model.opt.timestep,
+            ),
         }
 
     def step(self, action: np.ndarray):

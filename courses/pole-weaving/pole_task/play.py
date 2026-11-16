@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from supermimic.reward_tuning import RewardTuningCfg
+
 import argparse
 import json
 from pathlib import Path
@@ -11,7 +13,7 @@ from .foot_contact import foot_slip_passes
 from .inference import load_pole_actor
 from .source_environment import SourcePoleEnvironment
 from .source_playback import load_course_bundle
-from .source_runtime import run_source_episode, source_playback_viewer
+from .source_runtime import run_source_episode, source_playback_viewer, SOURCE_REWARD_TUNING
 
 
 def main(argv=None):
@@ -68,6 +70,7 @@ def main(argv=None):
                 device=args.device,
                 environment=environment,
                 viewer=viewer,
+                reward_tuning=RewardTuningCfg(**identity["reward_tuning"]) if "reward_tuning" in identity else SOURCE_REWARD_TUNING,
             )
             row = {**episode.result, "seed": seed}
             row["success"] = row["route_success"] and foot_slip_passes(row, config)

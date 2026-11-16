@@ -52,5 +52,31 @@
     ],
     "preview_fps": 12,
     "source_view_limit": "The robot partly leaves the original viewport near the end; the full episode interval is retained."
+  },
+  {
+    "name": "V1",
+    "checkpoint": "版本记录/V1/best.pt",
+    "checkpoint_sha256": "575cc1fd81cf56f1258e61b4e7b2bddc05681922541146a7051a13442b042c05",
+    "case": "nominal-01",
+    "seed": 20261103,
+    "device": "cpu",
+    "duration": 13.5,
+    "frames": 675,
+    "fps": 50,
+    "resolution": [
+      1280,
+      720
+    ],
+    "preview_fps": 12,
+    "preview_resolution": [
+      640,
+      360
+    ],
+    "speed": "simulation time, no time warp",
+    "method": "existing run_source_episode, offscreen MuJoCo viewer callback; one complete rollout",
+    "output_video": "docs/assets/demos/V1-B2400-nominal-01.mp4",
+    "output_preview": "docs/assets/demos/V1-B2400-nominal-01.gif",
+    "video_sha256": "48c1f55137e478d07ef42619939084ea5a81cfe46b43809dfac1fb8b3c02ddec",
+    "preview_sha256": "d3d0f4b4e43ea14c9df6ed1a37c1b4a37c241a6bc5b6ad3f6701d8d3a4f2ff12"
   }
 ]

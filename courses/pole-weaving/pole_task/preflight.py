@@ -173,7 +173,12 @@ def preflight(config_path: Path) -> dict:
         "state_dict_mapping": loaded.provenance["state_dict_mapping"],
         "provenance": loaded.provenance,
     }
+    from .source_runtime import configured_reward_tuning, validate_start_sampling
+    from dataclasses import asdict
+    tuning = configured_reward_tuning(config)
+    sampling = validate_start_sampling(config)
     report = {
+        "reward_tuning": asdict(tuning), "actor_start_sampling": sampling,
         "data": {"manifest": str(manifest_path), "cases": cases, "retention": retention},
         "q1_v3": {
             "scene_sha256": _sha256(scene_source),

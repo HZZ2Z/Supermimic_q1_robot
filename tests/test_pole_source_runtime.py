@@ -299,6 +299,17 @@ def test_evaluation_reports_registered_metrics_and_real_pole_contact(tmp_path):
     assert row["case_id"] == "short-nominal"
     assert row["reference_id"] == short.identity
     assert row["steps"] == 19
+    assert row["foot_slip_phases"]["version"] == 1
+    phase_times = [row["foot_slip_phases"][name]["contact_time_s"]
+                   for name in ("sustained", "touchdown", "liftoff", "boundary")]
+    np.testing.assert_allclose(np.sum(phase_times, axis=0), row["foot_contact_time_s"])
+    continuity = row["foot_slip_phases"]["sustained_continuity"]
+    assert continuity["reload_window_s"] == 0.01
+    np.testing.assert_allclose(
+        np.sum([continuity[name]["contact_time_s"] for name in
+                ("continuous", "reloading", "unknown_onset")], axis=0),
+        row["foot_slip_phases"]["sustained"]["contact_time_s"],
+    )
     assert {
         "endpoint_distance_m",
         "route_completed",
@@ -730,7 +741,8 @@ def test_model_fit_and_actor_update_use_paired_course_context(tmp_path):
     )
 
 
-def test_reward_component_logging_preserves_returns_without_updates(tmp_path, monkeypatch):
+@pytest.mark.parametrize("slip_weight", [.05, .075, .10])
+def test_reward_component_logging_preserves_returns_without_updates(tmp_path, monkeypatch, slip_weight):
     case = load_course('nominal-01')
     robot, motions = _motions(tmp_path, [case])
     episode = run_source_episode(ZeroActor(), robot, motions, case, 0,
@@ -739,7 +751,7 @@ def test_reward_component_logging_preserves_returns_without_updates(tmp_path, mo
     batch = replay.sample(batch_size=4, window=1, history=10)
     actor, world, critic = build_source_models(robot)
     algorithm = SourcePoleSuperMimic(robot, motions, world, actor, critic, horizon=2,
-                                     reward_tuning=SOURCE_REWARD_TUNING, clean_policy_actions=True)
+                                     reward_tuning=replace(SOURCE_REWARD_TUNING, foot_slip_weight=slip_weight), clean_policy_actions=True)
     monkeypatch.setattr(algorithm, '_fit_critic', lambda *a, **k: 0.0)
     def forbidden(*a, **k):
         raise AssertionError('No optimizer updates allowed')
@@ -757,3 +769,32 @@ def test_reward_component_logging_preserves_returns_without_updates(tmp_path, mo
     assert all(np.isfinite(logged[k]) for k in keys)
     assert all(logged[k] <= 0 for k in keys[1:])
     assert all(torch.equal(old, _parameters(m)) for old, m in zip(before, (actor, world, critic)))
+
+
+def test_two_collection_batches_keep_history_and_push_boundaries(tmp_path):
+    case = load_course('nominal-01')
+    robot, motions = _motions(tmp_path, [case])
+    episodes = [run_source_episode(
+        ZeroActor(), robot, motions, case, clip=0,
+        scene_path=tmp_path / f'batch-{start}.xml', start_frame=start,
+        seed=17, max_steps=16,
+    ) for start in (0, 40)]
+    assert [e.steps for e in episodes] == [16, 16]
+    transitions = [dict(t) for t in episodes[0].transitions]
+    transitions[3]['boundary'] = True
+    boundaries = episodes[0].boundaries.copy()
+    boundaries[3] = True
+    episodes[0] = replace(episodes[0], transitions=tuple(transitions), boundaries=boundaries)
+    replay = make_source_replay(episodes, robot, {case.case_id: 0}, device='cpu')
+    assert replay.count == 32
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(13)
+        policy = replay.sample(256, window=1, history=10)
+        model = replay.sample(256, window=8, history=1)
+    assert set(policy.frames.tolist()) <= set(range(13, 16)) | set(range(49, 56))
+    assert set(model.frames.tolist()) <= set(range(4, 9)) | set(range(40, 49))
+    assert (policy.frames < 40).any() and (policy.frames >= 40).any()
+    for i, frame in enumerate(policy.frames.tolist()):
+        episode = episodes[0 if frame < 40 else 1]
+        offset = frame - episode.start_frame
+        np.testing.assert_allclose(policy.history[i].numpy(), episode.observations[offset - 9:offset + 1])

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from supermimic.reward_tuning import RewardTuningCfg
+
 import argparse
 import json
 from pathlib import Path
@@ -9,7 +11,7 @@ from pathlib import Path
 from . import COURSE_ROOT, ROOT
 from .inference import load_pole_actor
 from .source_playback import load_course_bundle
-from .source_runtime import evaluate_source_cases
+from .source_runtime import evaluate_source_cases, SOURCE_REWARD_TUNING
 from .source_training import evaluation_cases_for, source_acceptance
 
 
@@ -37,6 +39,7 @@ def main(argv=None):
         device=args.device,
         seed=args.seed,
         config=config,
+        reward_tuning=RewardTuningCfg(**identity["reward_tuning"]) if "reward_tuning" in identity else SOURCE_REWARD_TUNING,
     )
     accepted = source_acceptance(reports, config)
     result = {

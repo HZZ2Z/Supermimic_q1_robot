@@ -1,0 +1,539 @@
+{
+  "version": "V1",
+  "checkpoint_update": 2400,
+  "device": "cpu",
+  "seed": 20261103,
+  "cases": {
+    "nominal-01": {
+      "case_id": "nominal-01",
+      "reference_id": "nominal-01:6c49b6df27172d3daf00348849418592e893797908a07543d14b0b6f6f3d51a3",
+      "steps": 675,
+      "endpoint_distance_m": 0.012998442492111658,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.016509623777787592,
+      "foot_contact_time_s": [
+        8.589999999999538,
+        7.92199999999935
+      ],
+      "foot_slip_mean_m_s": 0.08329261923818815,
+      "foot_slip_rms_m_s": 0.2710000259454638,
+      "foot_slip_fraction": 0.13578003875969916,
+      "foot_slip_phases": {
+        "version": 1,
+        "transition_window_s": 0.04,
+        "max_contact_gap_s": 0.02,
+        "contact_force_threshold_n": 10.0,
+        "slip_speed_threshold_m_s": 0.05,
+        "velocity_timing": "pre_integration",
+        "sustained": {
+          "contact_time_s": [
+            7.2780000000000005,
+            6.78
+          ],
+          "loaded_time_fraction": 0.8513808139534883,
+          "slip_mean_m_s": 0.0300825380538109,
+          "slip_rms_m_s": 0.12874549066671612,
+          "slip_fraction": 0.054488547446293924
+        },
+        "touchdown": {
+          "contact_time_s": [
+            0.606,
+            0.594
+          ],
+          "loaded_time_fraction": 0.07267441860465115,
+          "slip_mean_m_s": 0.5657955016386137,
+          "slip_rms_m_s": 0.7577836365055057,
+          "slip_fraction": 0.8700000000000001
+        },
+        "liftoff": {
+          "contact_time_s": [
+            0.652,
+            0.508
+          ],
+          "loaded_time_fraction": 0.07025193798449612,
+          "slip_mean_m_s": 0.20847627353881681,
+          "slip_rms_m_s": 0.4663001785926622,
+          "slip_fraction": 0.35
+        },
+        "boundary": {
+          "contact_time_s": [
+            0.054,
+            0.04
+          ],
+          "loaded_time_fraction": 0.005692829457364341,
+          "slip_mean_m_s": 0.33659925137269125,
+          "slip_rms_m_s": 0.6385837927193502,
+          "slip_fraction": 0.2765957446808511
+        },
+        "sustained_continuity": {
+          "version": 1,
+          "reload_window_s": 0.01,
+          "reloading_events_by_foot": [
+            63,
+            31
+          ],
+          "continuous": {
+            "contact_time_s": [
+              6.964,
+              6.5760000000000005
+            ],
+            "loaded_time_fraction": 0.8200096899224807,
+            "slip_mean_m_s": 0.013734617972351131,
+            "slip_rms_m_s": 0.021844863488210405,
+            "slip_fraction": 0.02274741506646972
+          },
+          "reloading": {
+            "contact_time_s": [
+              0.314,
+              0.20400000000000001
+            ],
+            "loaded_time_fraction": 0.03137112403100775,
+            "slip_mean_m_s": 0.45740075794370455,
+            "slip_rms_m_s": 0.661336733769127,
+            "slip_fraction": 0.8841698841698843
+          },
+          "unknown_onset": {
+            "contact_time_s": [
+              0.0,
+              0.0
+            ],
+            "loaded_time_fraction": 0.0,
+            "slip_mean_m_s": null,
+            "slip_rms_m_s": null,
+            "slip_fraction": null
+          }
+        }
+      },
+      "route_success": true,
+      "success": true
+    },
+    "eval-01": {
+      "case_id": "eval-01",
+      "reference_id": "eval-01:42843e377675f214aff6d4a0d1bbc139a566927b1962cac992271ab550b90338",
+      "steps": 671,
+      "endpoint_distance_m": 0.023071596506540976,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.016694357189675053,
+      "foot_contact_time_s": [
+        8.401999999999475,
+        7.943999999999347
+      ],
+      "foot_slip_mean_m_s": 0.08033414718190753,
+      "foot_slip_rms_m_s": 0.26076935196926276,
+      "foot_slip_fraction": 0.14119662302705052,
+      "foot_slip_phases": {
+        "version": 1,
+        "transition_window_s": 0.04,
+        "max_contact_gap_s": 0.02,
+        "contact_force_threshold_n": 10.0,
+        "slip_speed_threshold_m_s": 0.05,
+        "velocity_timing": "pre_integration",
+        "sustained": {
+          "contact_time_s": [
+            7.154,
+            6.884
+          ],
+          "loaded_time_fraction": 0.8588033769729597,
+          "slip_mean_m_s": 0.02762990302524567,
+          "slip_rms_m_s": 0.11878386133250855,
+          "slip_fraction": 0.05755805670323408
+        },
+        "touchdown": {
+          "contact_time_s": [
+            0.578,
+            0.58
+          ],
+          "loaded_time_fraction": 0.07084301969900893,
+          "slip_mean_m_s": 0.5721841101218862,
+          "slip_rms_m_s": 0.7400069844592801,
+          "slip_fraction": 0.9222797927461142
+        },
+        "liftoff": {
+          "contact_time_s": [
+            0.644,
+            0.44
+          ],
+          "loaded_time_fraction": 0.06631591826746605,
+          "slip_mean_m_s": 0.21372161285194363,
+          "slip_rms_m_s": 0.47281382991134985,
+          "slip_fraction": 0.37453874538745385
+        },
+        "boundary": {
+          "contact_time_s": [
+            0.026000000000000002,
+            0.04
+          ],
+          "loaded_time_fraction": 0.004037685060565276,
+          "slip_mean_m_s": 0.4698479290048124,
+          "slip_rms_m_s": 0.7487760445105047,
+          "slip_fraction": 0.393939393939394
+        },
+        "sustained_continuity": {
+          "version": 1,
+          "reload_window_s": 0.01,
+          "reloading_events_by_foot": [
+            35,
+            50
+          ],
+          "continuous": {
+            "contact_time_s": [
+              6.948,
+              6.676
+            ],
+            "loaded_time_fraction": 0.8334760797748685,
+            "slip_mean_m_s": 0.01418861963940316,
+            "slip_rms_m_s": 0.027979043619078166,
+            "slip_fraction": 0.02950675278919554
+          },
+          "reloading": {
+            "contact_time_s": [
+              0.20600000000000002,
+              0.20800000000000002
+            ],
+            "loaded_time_fraction": 0.025327297198091278,
+            "slip_mean_m_s": 0.46995851377094194,
+            "slip_rms_m_s": 0.6728076071479756,
+            "slip_fraction": 0.9806763285024155
+          },
+          "unknown_onset": {
+            "contact_time_s": [
+              0.0,
+              0.0
+            ],
+            "loaded_time_fraction": 0.0,
+            "slip_mean_m_s": null,
+            "slip_rms_m_s": null,
+            "slip_fraction": null
+          }
+        }
+      },
+      "route_success": true,
+      "success": true
+    },
+    "straight": {
+      "case_id": "straight",
+      "reference_id": "straight:4002294f66aded795eecb04f2c943a1a86fd95e66dc0ff66075bdef040dc8485",
+      "steps": 198,
+      "endpoint_distance_m": 0.028354116865817795,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.015267190139679426,
+      "foot_contact_time_s": [
+        2.4059999999999566,
+        2.2139999999999778
+      ],
+      "foot_slip_mean_m_s": 0.07140120272889579,
+      "foot_slip_rms_m_s": 0.22530790945128717,
+      "foot_slip_fraction": 0.14112554112554324,
+      "foot_slip_phases": {
+        "version": 1,
+        "transition_window_s": 0.04,
+        "max_contact_gap_s": 0.02,
+        "contact_force_threshold_n": 10.0,
+        "slip_speed_threshold_m_s": 0.05,
+        "velocity_timing": "pre_integration",
+        "sustained": {
+          "contact_time_s": [
+            2.0340000000000003,
+            1.848
+          ],
+          "loaded_time_fraction": 0.8402597402597404,
+          "slip_mean_m_s": 0.0276981682723434,
+          "slip_rms_m_s": 0.11176933270982706,
+          "slip_fraction": 0.05564142194744977
+        },
+        "touchdown": {
+          "contact_time_s": [
+            0.178,
+            0.192
+          ],
+          "loaded_time_fraction": 0.08008658008658008,
+          "slip_mean_m_s": 0.42751172836785245,
+          "slip_rms_m_s": 0.6022716534384167,
+          "slip_fraction": 0.8054054054054055
+        },
+        "liftoff": {
+          "contact_time_s": [
+            0.164,
+            0.134
+          ],
+          "loaded_time_fraction": 0.0645021645021645,
+          "slip_mean_m_s": 0.1949204621518503,
+          "slip_rms_m_s": 0.41176487155879166,
+          "slip_fraction": 0.3624161073825503
+        },
+        "boundary": {
+          "contact_time_s": [
+            0.03,
+            0.04
+          ],
+          "loaded_time_fraction": 0.015151515151515152,
+          "slip_mean_m_s": 0.08690900224142671,
+          "slip_rms_m_s": 0.13607416108987225,
+          "slip_fraction": 0.4285714285714285
+        },
+        "sustained_continuity": {
+          "version": 1,
+          "reload_window_s": 0.01,
+          "reloading_events_by_foot": [
+            22,
+            3
+          ],
+          "continuous": {
+            "contact_time_s": [
+              1.9180000000000001,
+              1.818
+            ],
+            "loaded_time_fraction": 0.8086580086580086,
+            "slip_mean_m_s": 0.011243517332033551,
+            "slip_rms_m_s": 0.020312839499967813,
+            "slip_fraction": 0.021413276231263382
+          },
+          "reloading": {
+            "contact_time_s": [
+              0.116,
+              0.03
+            ],
+            "loaded_time_fraction": 0.0316017316017316,
+            "slip_mean_m_s": 0.44875690740246466,
+            "slip_rms_m_s": 0.5670997912060782,
+            "slip_fraction": 0.9315068493150684
+          },
+          "unknown_onset": {
+            "contact_time_s": [
+              0.0,
+              0.0
+            ],
+            "loaded_time_fraction": 0.0,
+            "slip_mean_m_s": null,
+            "slip_rms_m_s": null,
+            "slip_fraction": null
+          }
+        }
+      },
+      "route_success": true,
+      "success": true
+    },
+    "left_turn": {
+      "case_id": "left_turn",
+      "reference_id": "left_turn:43d19be7b0a63bd4ad47249b958c5fff6482dd5fd4a83872ff2008f3d61c462a",
+      "steps": 298,
+      "endpoint_distance_m": 0.003358826982563525,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.016620611197828303,
+      "foot_contact_time_s": [
+        4.351999999999743,
+        3.573999999999828
+      ],
+      "foot_slip_mean_m_s": 0.08646571872720041,
+      "foot_slip_rms_m_s": 0.26432867704325014,
+      "foot_slip_fraction": 0.14635377239465855,
+      "foot_slip_phases": {
+        "version": 1,
+        "transition_window_s": 0.04,
+        "max_contact_gap_s": 0.02,
+        "contact_force_threshold_n": 10.0,
+        "slip_speed_threshold_m_s": 0.05,
+        "velocity_timing": "pre_integration",
+        "sustained": {
+          "contact_time_s": [
+            3.87,
+            2.98
+          ],
+          "loaded_time_fraction": 0.8642442593994448,
+          "slip_mean_m_s": 0.045008470899996524,
+          "slip_rms_m_s": 0.16144513884623768,
+          "slip_fraction": 0.07649635036496351
+        },
+        "touchdown": {
+          "contact_time_s": [
+            0.23,
+            0.28400000000000003
+          ],
+          "loaded_time_fraction": 0.06484986121625032,
+          "slip_mean_m_s": 0.5282884214487498,
+          "slip_rms_m_s": 0.7418825947199952,
+          "slip_fraction": 0.8365758754863812
+        },
+        "liftoff": {
+          "contact_time_s": [
+            0.228,
+            0.23
+          ],
+          "loaded_time_fraction": 0.05778450668685339,
+          "slip_mean_m_s": 0.20513642359055473,
+          "slip_rms_m_s": 0.4412743514448642,
+          "slip_fraction": 0.3100436681222707
+        },
+        "boundary": {
+          "contact_time_s": [
+            0.024,
+            0.08
+          ],
+          "loaded_time_fraction": 0.013121372697451427,
+          "slip_mean_m_s": 0.11083202247736736,
+          "slip_rms_m_s": 0.17434725473907664,
+          "slip_fraction": 0.6153846153846153
+        },
+        "sustained_continuity": {
+          "version": 1,
+          "reload_window_s": 0.01,
+          "reloading_events_by_foot": [
+            70,
+            10
+          ],
+          "continuous": {
+            "contact_time_s": [
+              3.516,
+              2.926
+            ],
+            "loaded_time_fraction": 0.8127681049709816,
+            "slip_mean_m_s": 0.01433514931594323,
+            "slip_rms_m_s": 0.033403974188744266,
+            "slip_fraction": 0.0223533064265756
+          },
+          "reloading": {
+            "contact_time_s": [
+              0.354,
+              0.054
+            ],
+            "loaded_time_fraction": 0.05147615442846328,
+            "slip_mean_m_s": 0.5293161612050732,
+            "slip_rms_m_s": 0.6480625390688532,
+            "slip_fraction": 0.9313725490196079
+          },
+          "unknown_onset": {
+            "contact_time_s": [
+              0.0,
+              0.0
+            ],
+            "loaded_time_fraction": 0.0,
+            "slip_mean_m_s": null,
+            "slip_rms_m_s": null,
+            "slip_fraction": null
+          }
+        }
+      },
+      "route_success": true,
+      "success": true
+    },
+    "right_turn": {
+      "case_id": "right_turn",
+      "reference_id": "right_turn:b5bb2403ee13810ae265e1c7495d537270c62fe2f94e1d4a690f4b8a3369aca7",
+      "steps": 298,
+      "endpoint_distance_m": 0.014125013832023407,
+      "route_completed": true,
+      "pole_collision": false,
+      "pole_contacts": [],
+      "fall": false,
+      "root_xy_rmse_m": 0.023295933589512516,
+      "foot_contact_time_s": [
+        4.355999999999742,
+        3.927999999999789
+      ],
+      "foot_slip_mean_m_s": 0.07065441806283025,
+      "foot_slip_rms_m_s": 0.21966045167964615,
+      "foot_slip_fraction": 0.13737324963786396,
+      "foot_slip_phases": {
+        "version": 1,
+        "transition_window_s": 0.04,
+        "max_contact_gap_s": 0.02,
+        "contact_force_threshold_n": 10.0,
+        "slip_speed_threshold_m_s": 0.05,
+        "velocity_timing": "pre_integration",
+        "sustained": {
+          "contact_time_s": [
+            3.878,
+            3.564
+          ],
+          "loaded_time_fraction": 0.89835828102366,
+          "slip_mean_m_s": 0.03904160308629423,
+          "slip_rms_m_s": 0.13632405588889487,
+          "slip_fraction": 0.08438591776404192
+        },
+        "touchdown": {
+          "contact_time_s": [
+            0.244,
+            0.2
+          ],
+          "loaded_time_fraction": 0.05359729599227426,
+          "slip_mean_m_s": 0.46606581083669196,
+          "slip_rms_m_s": 0.6197156926778485,
+          "slip_fraction": 0.8603603603603603
+        },
+        "liftoff": {
+          "contact_time_s": [
+            0.196,
+            0.124
+          ],
+          "loaded_time_fraction": 0.0386286817962337,
+          "slip_mean_m_s": 0.26962881718299153,
+          "slip_rms_m_s": 0.5327928922227299,
+          "slip_fraction": 0.38125
+        },
+        "boundary": {
+          "contact_time_s": [
+            0.038,
+            0.04
+          ],
+          "loaded_time_fraction": 0.009415741187831964,
+          "slip_mean_m_s": 0.0197326609513264,
+          "slip_rms_m_s": 0.025315208477817135,
+          "slip_fraction": 0.07692307692307693
+        },
+        "sustained_continuity": {
+          "version": 1,
+          "reload_window_s": 0.01,
+          "reloading_events_by_foot": [
+            4,
+            102
+          ],
+          "continuous": {
+            "contact_time_s": [
+              3.844,
+              3.1
+            ],
+            "loaded_time_fraction": 0.8382423949782712,
+            "slip_mean_m_s": 0.014262319215947047,
+            "slip_rms_m_s": 0.02268163397652025,
+            "slip_fraction": 0.02217741935483871
+          },
+          "reloading": {
+            "contact_time_s": [
+              0.034,
+              0.464
+            ],
+            "loaded_time_fraction": 0.06011588604538869,
+            "slip_mean_m_s": 0.3845583645234241,
+            "slip_rms_m_s": 0.5201397501714157,
+            "slip_fraction": 0.9518072289156626
+          },
+          "unknown_onset": {
+            "contact_time_s": [
+              0.0,
+              0.0
+            ],
+            "loaded_time_fraction": 0.0,
+            "slip_mean_m_s": null,
+            "slip_rms_m_s": null,
+            "slip_fraction": null
+          }
+        }
+      },
+      "route_success": true,
+      "success": true
+    }
+  },
+  "success": true
+}

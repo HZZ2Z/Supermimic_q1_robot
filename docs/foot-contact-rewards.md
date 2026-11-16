@@ -1,6 +1,8 @@
 # 足底奖励与验收
 
-2026-11-15：修正足地摩擦随机化，增加 foot slip 和近地落脚速度辅助惩罚，接入实际接触滑移统计与选模。没有启动训练或更新策略权重。
+2026-11-15：修正足地摩擦随机化，增加 foot slip 和近地落脚速度辅助惩罚，接入实际接触滑移统计与选模。该条记录仅描述当日代码改动；当前V1训练与结果见[V1版本说明](versions/V1.md)。
+
+V1主线默认 `actor_start_sampling: stratified_4`、`foot_slip_weight: 0.05`；warmup不启用四段采样，奖励结构和正式门槛不变。
 
 ## 修改位置
 
@@ -10,7 +12,7 @@
 | `3rdparty/SuperMimic/src/supermimic/robot.py` | `foot_kinematics()` 读取当前模型每脚四个碰撞球，计算球底材料点的位置与速度。 |
 | `3rdparty/SuperMimic/src/supermimic/reward_tuning.py` | 两项辅助惩罚及参数校验；与基础奖励复用运动学结果。 |
 | `courses/pole-weaving/pole_task/source_runtime.py` | `SOURCE_REWARD_TUNING` 启用两项奖励，仿真采样和想象训练共用；汇总回合指标。 |
-| `courses/pole-weaving/pole_task/foot_contact.py` | 实际滑移的测量阈值与验收函数。 |
+| `courses/pole-weaving/pole_task/foot_contact.py` | 实际滑移的分阶段统计、测量阈值与验收函数。 |
 | `courses/pole-weaving/pole_task/config.json` | 滑移验收上限。 |
 | `courses/pole-weaving/pole_task/source_training.py` | 路线和滑移共同验收、归一化选模评分、恢复训练一致性检查。 |
 | `play.py`、`evaluate.py`、`acceptance.py` | 输出并使用新的滑移结果。 |
@@ -21,7 +23,7 @@
 
 本次修改前已经存在 `RewardTuningCfg`、`reward_tuning_terms()` 和 `tuned_reward()`，原任务用它们启用权重为 0.05 的手臂关节惩罚。足底两项沿用同一配置和汇总函数，没有新增训练奖励脚本或第二套奖励入口。
 
-当前训练入口 `pole_task.training.main()` 转交 `source_training.main()`。其中，仿真采样 `run_source_episode()` 与世界模型想象 `SourcePoleSuperMimic._imagined_step()` 都调用同一个 `tuned_reward()`，并由训练端传入同一个 `SOURCE_REWARD_TUNING`：
+当前训练入口 `pole_task.training.main()` 转交 `source_training.main()`。其中，仿真采样 `run_source_episode()` 与世界模型想象 `SourcePoleSuperMimic._imagined_step()` 都调用同一个 `tuned_reward()`，并由训练端传入同一个 `configured_reward_tuning(config)`（默认值来自 `SOURCE_REWARD_TUNING`）：
 
 ```text
 仿真采样 / 世界模型想象
@@ -33,7 +35,7 @@
 
 `Q1Robot.reward()` 原有的全身位置、姿态、线速度、角速度跟踪，根部位置／姿态跟踪，动作平滑与关节越限公式均保留。其接口新增了可选的关键字参数 `next_heads`，仅复用本步运动学计算，与已有的 `target_heads` 缓存对应；旧调用方式仍可使用。这是本次明确的接口扩展，不应表述为“接口完全未改”。`foot_kinematics()` 负责从同一运动学结果提取足底点位置和速度，惩罚公式仍在 `reward_tuning_terms()` 内。
 
-新增的 `foot_contact.py` 只保存实际接触测量阈值、验收门槛检查与版本标识，不计算奖励。实际接触数据由 `SourcePoleEnvironment` 汇总后用于评估和选模；可微奖励继续基于预测状态计算。旧的 `models.PoleRobot.reward()` 属于保留的旧任务实现，当前 source-profile 训练使用继承 `Q1Robot.reward()` 的 `SourcePoleRobot`。
+`foot_contact.py` 负责评估用的接触阶段统计、测量阈值、验收条件与版本标识，不计算训练奖励。实际接触数据由 `SourcePoleEnvironment` 汇总后用于评估和选模；可微奖励继续基于预测状态计算。旧的 `models.PoleRobot.reward()` 属于保留的旧任务实现，当前 source-profile 训练使用继承 `Q1Robot.reward()` 的 `SourcePoleRobot`。
 
 `test_pole_source_runtime.py` 在仿真采样和想象两条路径中分别关闭／开启足底项，确认状态相同且奖励差恰好等于 `dt × (foot_slip_penalty + foot_landing_penalty)`。两条测试都不执行优化器更新。
 
@@ -113,3 +115,45 @@ mean_over_cases(
 - 同时记录本次运行的累计 `collection_environment_steps`、当前 `replay_transitions` 和 `last_collection_update`，以区别训练数据量与评估环境步数。`environment_steps` 在日志写入时包含当次评估。
 
 两个间隔必须为正整数。快照间隔与评估间隔不一致时，快照可没有 `evaluation`；需另外评估该快照。恢复检查仍要求配置一致，旧 1744 运行也已用完 2,500 次预算，不能直接用旧 `latest.pt` 继续此配置。
+
+
+## 滑移阶段口径（2026-11-15，诊断版本 1）
+
+`play`、`evaluate` 和原有回合结果新增 `foot_slip_phases`，仍使用同一次物理接触采样。原有总量指标、`success`、选模门槛和 `FOOT_CONTACT_VERSION` 均保持不变；分阶段结果尚不作为新的合格标准。
+
+- 单脚法向承重 >10 N 时计入统计。只为划分承重段，合并不超过 20 ms 的内部断触；被合并的空中样本不计入任何阶段的时间或滑移。
+- 每段开始的 40 ms 为 `touchdown`（触地／开始承重代理），结束前的 40 ms 为 `liftoff`（离地／结束承重代理）；其余为 `sustained`（持续支撑）。这不是根据足部运动学识别出的精确步态相位。
+- 短于两倍窗口的承重段按距哪个边界更近来分配；等距时归开始侧，不重复计数。
+- 回合开始时已承重、结束时仍承重的对应边缘窗口归 `boundary`，不虚构触地或离地事件。它与上述三类一起完整划分原始承重时间。
+- 每类输出左右 `contact_time_s`、占全部承重时间的 `loaded_time_fraction`、`slip_mean_m_s`、`slip_rms_m_s` 和超过 0.05 m/s 的 `slip_fraction`。无该阶段样本时速度和超速比例为 `null`，不视为零滑移。
+- 元数据记录阶段版本、窗口、短断触上限、承重阈值、超速阈值和 `pre_integration` 速度采样时点。触地子步可能包含该子步接触响应前的来向速度，不能把它直接解释为稳定支撑期间的持续滑动。
+
+四类的左右承重时间之和等于原始承重时间；按时间加权后，均速、均方速度和超速比例均还原原始总量。RMS 保留接触点速度平方的力加权统计，不以平均速度平方替代。
+
+窗口目前沿用分析初值 40 ms；纯统计函数允许对同一批记录比较 20/40/60 ms，不需重新仿真。实际 2100 五场景复测和窗口敏感性记录位于本地 `outputs/slip-phase-calibration-2100/`。改变统计窗口会影响数值，不能直接套用旧总量门槛宣称新指标达标；落脚与离地瞬态需保留独立评估。
+
+### 连续承重与再承重诊断
+
+原 `sustained` 合并了不超过20 ms的承重中断，因此其中仍可能包含再次超过10 N后的瞬态。
+新增 `foot_slip_phases.sustained_continuity`，只细分原 `sustained`，不改变原结果或选模：
+
+- `continuous`：原 sustained 中，连续超过10 N已超过10 ms的样本。
+- `reloading`：观测到未承重之后，重新超过10 N的前10 ms中属于原 sustained 的样本；2 ms物理步长下为最初5个子步。
+- `unknown_onset`：记录开始时已承重、尚无法确认起始时刻的部分。默认40 ms边缘窗口下通常为空；不虚构再承重事件。
+- `reloading_events_by_foot`：左右脚的再承重次数，只统计前10 ms窗口与原 sustained 有交集的事件。
+
+三个子类沿用左右承重时间、均速、RMS、超速比例和 `loaded_time_fraction`；时间比例的分母仍为
+全部承重时间，三个子类之和等于原 sustained 的时间比例。无样本时速度为 `null`。
+子类的时间及速度矩可还原原 sustained；独立记录诊断版本1和 `reload_window_s: 0.01`。
+未超过10 N不等于足底完全离地，10 ms也不是实机安全标准；不得删除这些瞬态后宣称验收通过。
+
+### Actor replay 保留最近两批
+
+Actor 阶段每25次更新继续采新数据，replay改为最近两批完整回合；第三批到来时淘汰最旧一批。
+warmup继续只保留一批，进入Actor时丢弃warmup批次。恢复训练不加载旧replay，第一次采样只有一批，
+第二次刷新后才有两批；采样窗口仍不能跨回合或推扰边界。
+
+`identity.json`及checkpoint记录 `actor_replay_batches: 2`；日志的 `replay_batch_updates` 标识当前批次。
+`replay_transitions`、`replay_case_transitions` 统计当前保留的全部数据，
+`collection_environment_steps` 只累计新采集的转移，不重复计算旧批。原学习率、奖励、采样次数、
+评估及快照间隔、正式选模条件不变。

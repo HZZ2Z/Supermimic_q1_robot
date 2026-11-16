@@ -10,7 +10,7 @@ from . import COURSE_ROOT, ROOT
 from .foot_contact import foot_slip_passes
 from .inference import load_pole_actor
 from .source_playback import load_course_bundle
-from .source_runtime import evaluate_source_cases, run_source_episode
+from .source_runtime import evaluate_source_cases, run_source_episode, configured_reward_tuning
 from .source_training import evaluation_cases_for, source_acceptance
 
 DEFAULT_TRIALS = 20
@@ -68,6 +68,7 @@ def run_nominal_trials(
             device=device,
             observation_noise=False,
             action_noise=0.0,
+            reward_tuning=configured_reward_tuning(config),
         )
         row = {
             **episode.result,
@@ -143,6 +144,7 @@ def main(argv=None):
         output_dir / "references",
         device=args.device,
     )
+    config = {**config, "foot_slip_weight": identity.get("reward_tuning", {}).get("foot_slip_weight", 0.05)}
     result = {
         "checkpoint": identity,
         "seed": args.seed,

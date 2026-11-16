@@ -11,7 +11,7 @@ soccer ball or goal state.
 from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 import numpy as np
@@ -46,6 +46,28 @@ SOURCE_REWARD_TUNING = RewardTuningCfg(
     foot_slip_weight=0.05,
     foot_landing_weight=0.02,
 )
+
+
+def configured_reward_tuning(config: dict | None = None) -> RewardTuningCfg:
+    value = (config or {}).get("foot_slip_weight", 0.05)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("foot_slip_weight must be a finite nonnegative number")
+    return replace(SOURCE_REWARD_TUNING, foot_slip_weight=float(value))
+
+
+def validate_start_sampling(config: dict) -> str:
+    mode = config.get("actor_start_sampling", "uniform")
+    if mode not in ("uniform", "stratified_4"):
+        raise ValueError("actor_start_sampling must be uniform or stratified_4")
+    return mode
+
+
+def stratified_start_frame(last_frame: int, batch: int, count: int, index: int, seed: int) -> int:
+    bins = np.array_split(np.arange(1, last_frame - 9), 4)
+    choices = bins[(batch * count + index) % 4]
+    if not len(choices):
+        raise ValueError("Reference too short for four strata with ten history transitions")
+    return int(choices[int(np.random.default_rng(seed).random() * len(choices))])
 
 
 def source_nominal_context(robot: SourcePoleRobot, poles_xy: Tensor) -> Tensor:
@@ -681,6 +703,7 @@ def evaluate_source_cases(
     device: str = "cpu",
     seed: int = 0,
     config: dict | None = None,
+    reward_tuning: RewardTuningCfg | None = None,
 ) -> dict[str, dict]:
     """Fixed-seed headless evaluation of each registered course/reference pair."""
     by_id = {case.case_id: index for index, case in enumerate(motions.cases)}
@@ -702,6 +725,7 @@ def evaluate_source_cases(
             device=device,
             observation_noise=False,
             action_noise=0.0,
+            reward_tuning=reward_tuning or configured_reward_tuning(config),
         )
         row = episode.result
         row["success"] = row["route_success"] and foot_slip_passes(row, config)
@@ -711,6 +735,9 @@ def evaluate_source_cases(
 
 __all__ = [
     "SOURCE_REWARD_TUNING",
+    "configured_reward_tuning",
+    "validate_start_sampling",
+    "stratified_start_frame",
     "SourceEpisode",
     "SourcePoleSuperMimic",
     "advance_source_context",

@@ -88,5 +88,7 @@
   "training_case_ids": ["nominal-01", "straight", "left_turn", "right_turn"],
   "retention_collection_episodes": 2,
   "evaluation_case_ids": ["eval-01"],
-  "retention_case_ids": ["straight", "left_turn", "right_turn"]
+  "retention_case_ids": ["straight", "left_turn", "right_turn"],
+  "actor_start_sampling": "stratified_4",
+  "foot_slip_weight": 0.05
 }

@@ -1,5 +1,7 @@
 # S-shaped Pole Weaving
 
+The mainline now defaults to V1 stratified Actor sampling. V1 selects B-2400; see the [version and resume guide](../../docs/versions/V1.md). The older demo below remains a historical reference. Resume historical checkpoints with their original config.
+
 English | [简体中文](README.zh-CN.md)
 
 This course provides a Q1 baseline for weaving through a three-pole S-shaped course using the SuperMimic world-model framework. It covers the task environment, observation design, and reward design, and supports baseline reproduction and policy improvement.
