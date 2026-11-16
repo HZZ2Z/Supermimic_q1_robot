@@ -2,15 +2,15 @@
 
 <sub>Q1 HUMANOID · MUJOCO · SUPERMIMIC</sub>
 
-# 从路线跟踪，到稳定落脚
+# SuperMimic 人形机器人三杆绕行实验
 
-**Q1 SuperMimic — 人形机器人三杆绕行实验**
+**基于开源项目 https://github.com/MohismLab/master_project_q1_robot_soccer 进行开发**
 
-记录每一次改动，也保留每一个对照。
+优化记录与效果展示。
 
 [查看演示](#版本演示) · [比较指标](#效果对比) · [快速启动](#快速启动) · [V1实验报告](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/V1)
 
-**当前版本 V1 · B-2400**　｜　**CPU固定五场景验收 5/5**
+**当前最新版本 V1 · B-2400**　｜　**CPU固定五场景验收 5/5**
 
 </div>
 
@@ -28,7 +28,7 @@
 | **接触稳定性** | 分开统计触地、离地、连续承重和再承重滑移 |
 | **可比较的优化** | 保留baseline和历史模型，统一CPU场景、种子与验收口径 |
 
-> **分支分工**：`main`是展示与版本目录；[V1](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/V1)保存当前源码、配置和详细实验报告；[reward_footflip](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/reward_footflip)保留上一版实现。
+> **版本管理**：不同版本按照不同brach保存
 
 ## 版本演示
 
@@ -45,12 +45,12 @@
   </tr>
   <tr>
     <td>原始模仿与路线跟踪</td>
-    <td>足底滑移／落脚速度约束</td>
+    <td>添加了足底滑移／落脚速度约束</td>
     <td>四段采样与两批replay</td>
   </tr>
 </table>
 
-**点击动图查看完整MP4。** V1为一次13.5秒CPU仿真回放；旧版为录屏，尾段部分出画但保留完整时段。录制方式不同，不用播放速度比较策略性能。
+**点击gif查看完整仿真** 
 
 ## 效果对比
 
@@ -76,11 +76,11 @@
 
 ## 版本记录
 
-| 版本 | 核心改动 | 保存的对照 |
+| 版本 | 核心改动 | 分支与检查点 |
 |---|---|---|
-| **Baseline** | 原始模仿与路线跟踪 | 初始步态、录像与指标 |
-| **Foot slip** | 修复摩擦随机化；加入滑移／近地落脚速度惩罚；接入滑移评估和选模 | 原2100，历史分支名为`reward_footflip` |
-| **V1** | Actor起点四段轮换；保留最近两批replay；完善采样与接触诊断，修复恢复边界和patience计数 | B-2400，即本轮`best.pt`；不是最后的2500 |
+| **Baseline** | 原始模仿与路线跟踪 | https://github.com/MohismLab/master_project_q1_robot_soccer |
+| **Foot slip** | 修复摩擦随机化；加入滑移／近地落脚速度惩罚；接入滑移评估和选模 | branch：`reward_footflip`，2100.pt|
+| **V1** | Actor起点四段轮换；保留最近两批replay；完善采样与接触诊断，修复恢复边界和patience计数 | branch:`V1`，B-2400.pt |
 
 V1奖励权重、学习率和正式门槛保持不变。A/B采样实验、延长训练的收益与退化，以及选择2400的依据，见[V1完整报告](https://github.com/HZZ2Z/Supermimic_q1_robot/blob/V1/README.md)。
 
