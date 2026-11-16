@@ -8,7 +8,7 @@
 
 优化记录与效果展示。
 
-[查看演示](#版本演示) · [比较指标](#效果对比) · [快速启动](#快速启动) · [V1实验报告](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/V1)
+[查看演示](#版本演示) · [比较指标](#效果对比) · [快速启动](#快速启动) · [V1实验报告](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/V1)· [下载检查点](https://drive.google.com/drive/folders/17FkXq8VBfoUaLeKqJ6kMikj6m-NGIUZM?usp=drive_link)
 
 **当前最新版本 V1 · B-2400**　｜　**CPU固定五场景验收 5/5**
 
