@@ -39,7 +39,7 @@ V1相对原2100，左转连续承重均速下降36.9%、再承重积分下降54.
 
 ## 三、使用
 
-先按[环境与资产说明](docs/setup.md)准备 `env_q1` 和登记的源warmup权重。项目权重、原始录像和日志不随Git分发；本机V1已归档到 `版本记录/V1/`。
+先按[环境与资产说明](docs/setup.md)准备 `env_q1` 和登记的源warmup权重。项目权重与原始录像不随Git分发；A/B训练日志已提供于[logs](logs/README.md)；本机V1已归档到 `版本记录/V1/`。
 
 ```bash
 conda activate env_q1
@@ -111,9 +111,11 @@ V1相对B-2200：左转触地积分下降34.9%，连续均速下降21.7%，再�
 | `版本记录/` | 本地版本模型、配置与验证归档 |
 | `docs/versions/`、`docs/assets/demos/` | 可分享的版本记录与精选演示 |
 | `experiments/reward-sampling/` | A/B原始配置及历史恢复配置 |
-| `logs/`、`outputs/` | 保留的训练原始记录和分析产物，不纳入Git |
+| `logs/`、`outputs/` | A/B精选训练日志随Git保存；其他原始记录和分析产物仅本地 |
 | `shared/`、`3rdparty/` | 共享资源、旧适配器和SuperMimic源码 |
 
 [训练与恢复](docs/pole-weaving.md) · [奖励与验收](docs/foot-contact-rewards.md) · [开发日志](docs/开发日志.md) · [许可证](LICENSE)
 
 A/B各三段日志已直接放到 `logs/q1-pole-weaving/`，不再嵌套experiment-A/B。旧试验与smoke记录移至本地 `版本记录/历史训练归档/`，可恢复；checkpoint内部历史路径与原配置保持不变，迁移映射见 `版本记录/训练路径迁移.json`。
+
+[A/B完整训练日志与文件说明](logs/README.md)（已脱敏，不含权重或仿真缓存）。
