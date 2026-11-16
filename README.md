@@ -1,66 +1,44 @@
-# Q1 SuperMimic · 版本与实验
+# Q1 Robot · 版本对比
 
-基于 **MuJoCo + SuperMimic 世界模型**的 Q1 人形机器人三杆绕行项目，记录模仿学习、足底稳定性与训练流程的改进。
+基于SuperMimic的Q1三杆绕行实验。main用于展示与版本索引；源码、训练方法和实验报告见各版本分支。
 
-`main` 是项目总览和版本导航；可运行源码位于各版本分支。每个版本保留独立视频，便于后续追加比较。
+## 版本记录
 
-## 版本列表
+|版本|主要优化|CPU五场景通过|入口|
+|---|---|---:|---|
+|Baseline|原有模仿与路线跟踪|0/5（按后加滑移门槛复评）|原始对照|
+|Foot slip · 2100|修复摩擦随机化，增加足底滑移／落脚速度惩罚，加入滑移选模|4/5|[源码与说明](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/reward_footflip)|
+|**V1 · B-2400**|Actor四段采样、最近两批replay，完善采样／接触诊断与恢复逻辑|**5/5**|[源码与实验报告](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/V1)|
 
-| 版本 | 相比基线的改动 | 当前结果 | 源码 |
-|---|---|---|---|
-| Baseline | 原有绕杆策略 | 可完成常规路线，足底滑移较明显 | 本仓库保留展示与指标 |
-| reward_footflip · 2100 | 修复摩擦随机化；增加 foot slip／近地落脚辅助惩罚；Actor 定期采样；保存中期模型并记录分项奖励 | 常规路线滑移均速下降 47.3%；五场景 CPU 验收通过 4/5 | [reward_footflip](https://github.com/HZZ2Z/Supermimic_q1_robot/tree/reward_footflip) |
+V1采用B实验的2400检查点，不是最后2500模型；奖励权重和正式门槛保持不变。
 
-分支名沿用 `reward_footflip`，实际奖励项为 **foot slip**。展示模型为 `run-20261115-160417/checkpoint-002100.pt`，不是最后一次更新。
-
-## 版本演示
-
-两段均裁至 MuJoCo 渲染画面，各保留一次完整 `nominal-01` 推理。保持原录屏速度；录制耗时不同，不用于比较策略运行速度。GIF 为轻量预览，点击可查看高清 MP4 文件。原录像尾段机器人部分走出窗口下缘，已保留，未裁掉该时间段。
+## 演示
 
 ### Baseline
+[![Baseline](docs/assets/demos/baseline-nominal-01.gif)](docs/assets/demos/baseline-nominal-01.mp4)
 
-[![Baseline：一次完整绕杆](docs/assets/demos/baseline-nominal-01.gif)](docs/assets/demos/baseline-nominal-01.mp4)
+### Foot slip · 原2100
+[![Foot slip](docs/assets/demos/reward-footflip-20261115-2100.gif)](docs/assets/demos/reward-footflip-20261115-2100.mp4)
 
-[高清 MP4](docs/assets/demos/baseline-nominal-01.mp4)
+### V1 · B-2400
+[![V1](docs/assets/demos/V1-B2400-nominal-01.gif)](docs/assets/demos/V1-B2400-nominal-01.mp4)
 
-### reward_footflip · checkpoint-002100
+点击图片查看完整MP4。V1是一次13.5秒CPU仿真回放，旧版为录屏，视觉播放速度不用于定量比较。旧录屏尾段机器人部分出画，已保留完整时段。
 
-[![2100：一次完整绕杆](docs/assets/demos/reward-footflip-20261115-2100.gif)](docs/assets/demos/reward-footflip-20261115-2100.mp4)
+## 同条件对比
 
-[高清 MP4](docs/assets/demos/reward-footflip-20261115-2100.mp4)
+nominal-01，CPU，seed=20261103：
 
-## 效果对比
+|指标|Baseline|Foot slip 2100|V1|
+|---|---:|---:|---:|
+|滑移均速 m/s|0.1727|0.0910|**0.0833**|
+|超速承重比例|30.48%|16.83%|**13.58%**|
+|路线XY RMSE cm|2.73|2.69|**1.65**|
 
-同一 `nominal-01`、CPU、固定初始条件。指标来自原始接触统计，未通过裁掉落脚瞬态来重新计分。
+V1相对原2100的左转连续承重均速下降36.9%、再承重积分下降54.0%。但承重时间也有变化，部分接触分项仍存在取舍；5/5仅代表本轮固定仿真验收，不代表实机安全或多种子鲁棒性。
 
-| 指标 | Baseline | 2100 |
-|---|---:|---:|
-| 足底滑移均速 | 0.1727 m/s | **0.0910 m/s** |
-| 滑移速度 >0.05 m/s 的承重时间比例 | 30.48% | **16.83%** |
-| 根部 XY RMSE | 2.73 cm | **2.69 cm** |
-| 路线完成／摔倒／碰杆 | 完成／无／无 | 完成／无／无 |
+[原2100记录](docs/versions/reward_footflip.json) · [V1身份与结果](docs/versions/V1.json) · [V1五场景指标](docs/versions/V1-evaluation.json)
 
-2100 在五个固定场景中通过 4/5，左转仍未通过实验滑移门槛，所以没有合格的 `best.pt`。结果体现整组改动，不代表单项奖励的独立效果或实机验证。[完整指标](docs/versions/reward_footflip.json) · [视频剪辑记录](docs/versions/demos.json)
+权重与原始训练日志不随Git分发。训练、恢复、配置和完整实验分析请查看[V1分支README](https://github.com/HZZ2Z/Supermimic_q1_robot/blob/V1/README.md)。
 
-## 获取源码
-
-```bash
-git clone --branch reward_footflip https://github.com/HZZ2Z/Supermimic_q1_robot.git
-cd Supermimic_q1_robot
-```
-
-运行环境为 Linux、Python 3.11、MuJoCo 与 PyTorch；训练使用 CUDA，评估可使用 CPU。安装、warmup 准备和运行命令见[版本 README](https://github.com/HZZ2Z/Supermimic_q1_robot/blob/reward_footflip/README.md)。模型权重、原始录像和训练日志不随 Git 分发。
-
-## 推理
-
-```bash
-python -m pole_task.play \
-  --checkpoint logs/q1-pole-weaving/run-<timestamp>/best.pt \
-  --case nominal-01 --gui --seed 20261103 --loops 5
-```
-
-## 版本维护
-
-新增版本以独立分支保存源码和简短说明，在此追加改动、同口径指标与独立演示。基线不因新实验而替换；第三方来源和许可证保留在各源码分支中。
-
-[项目许可证](LICENSE)
+[许可证](LICENSE)
