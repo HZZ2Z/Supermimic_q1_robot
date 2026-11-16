@@ -51,6 +51,14 @@ cd Supermimic_q1_robot
 
 运行环境为 Linux、Python 3.11、MuJoCo 与 PyTorch；训练使用 CUDA，评估可使用 CPU。安装、warmup 准备和运行命令见[版本 README](https://github.com/HZZ2Z/Supermimic_q1_robot/blob/reward_footflip/README.md)。模型权重、原始录像和训练日志不随 Git 分发。
 
+## 推理
+
+```bash
+python -m pole_task.play \
+  --checkpoint logs/q1-pole-weaving/run-<timestamp>/best.pt \
+  --case nominal-01 --gui --seed 20261103 --loops 5
+```
+
 ## 版本维护
 
 新增版本以独立分支保存源码和简短说明，在此追加改动、同口径指标与独立演示。基线不因新实验而替换；第三方来源和许可证保留在各源码分支中。
