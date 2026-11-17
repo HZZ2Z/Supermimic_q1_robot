@@ -14,7 +14,7 @@
 
 [![V1：Q1 机器人在 MuJoCo 中完成三杆 S 形绕行](docs/assets/demos/V1-B2400-nominal-01.gif)](docs/assets/demos/V1-B2400-nominal-01.mp4)
 
-[观看 V1 MP4](docs/assets/demos/V1-B2400-nominal-01.mp4) · [版本说明](docs/versions/V1.md) · [五场景原始指标](docs/versions/V1-evaluation.json) · [模型身份与 SHA-256](docs/versions/V1.json)
+[下载 V1 权重](https://drive.google.com/drive/folders/1lB6t3sj8tbau3Vs45u11exjp2ng0hnG-?usp=drive_link) · [观看 V1 MP4](docs/assets/demos/V1-B2400-nominal-01.mp4) · [版本说明](docs/versions/V1.md) · [五场景原始指标](docs/versions/V1-evaluation.json) · [模型身份与 SHA-256](docs/versions/V1.json)
 
 演示为一次完整的 `nominal-01` CPU 策略回放：675 个控制步、13.5 秒仿真时间，按 50 FPS 导出。视频按仿真时间播放；本地 GUI 的运行速度取决于机器性能。
 
@@ -56,7 +56,7 @@
 | 在本机回放、评估 V1 | Python 环境 + V1 `best.pt`；CPU 即可 | 本节第 1–5 步 |
 | 新训练或恢复训练 | 上述环境 + 登记的源 warmup + 可用 CUDA GPU；恢复还需项目 checkpoint | [训练与恢复](#training) |
 
-**权重不随 Git 分发。** 机器人 XML、网格、场景、参考轨迹、配置和带本地修改的 SuperMimic 源码均已包含在仓库中。取得 V1 `best.pt` 后，回放与评估**不需要源 warmup 文件**，也不需要旁边再放一份上游仓库。
+**V1 权重通过[检查点云盘](https://drive.google.com/drive/folders/1lB6t3sj8tbau3Vs45u11exjp2ng0hnG-?usp=drive_link)提供，不随 Git 分发。** 机器人 XML、网格、场景、参考轨迹、配置和带本地修改的 SuperMimic 源码均已包含在仓库中。取得 V1 `best.pt` 后，回放与评估**不需要源 warmup 文件**，也不需要旁边再放一份上游仓库。
 
 ### 1. 获取 V1 分支并安装环境
 
@@ -109,7 +109,9 @@ python -m pole_task.evaluate --help
 
 ### 2. 放置并校验 V1 权重
 
-从已有本地归档或项目维护者处取得 **B-2400 的 `best.pt`**。目前仓库没有发布 V1 权重的 Release 下载附件；课程页中的旧演示权重也不能仅凭文件名认定为 V1。
+打开[检查点云盘（Google Drive）](https://drive.google.com/drive/folders/1lB6t3sj8tbau3Vs45u11exjp2ng0hnG-?usp=drive_link)，在 `V1` 目录中下载 **`best.pt`**。
+
+**实际文件名为 `best.pt`。** 文中的 `B-2400` 表示该模型来自 B 实验的第 2400 次更新；下载、复制和回放均使用 `best.pt`。下载后按下方步骤放置文件并校验 SHA-256。
 
 将下面 `/path/to/V1/best.pt` 替换为实际文件路径：
 
@@ -384,7 +386,7 @@ A/B 六段精选日志直接位于 `logs/q1-pole-weaving/`，不再嵌套 `exper
 | 现象 | 检查与处理 |
 |---|---|
 | `No module named pole_task` 或项目包无法导入 | 激活 `env_q1`，在仓库根目录执行 `python -m pip install --no-deps -e .`；确认运行的是该环境的 Python。 |
-| `Pole checkpoint not found` | Git 不附带权重；先取得 V1 `best.pt`，核对实际路径并完成 SHA-256 校验。 |
+| `Pole checkpoint not found` | 从[检查点云盘](https://drive.google.com/drive/folders/1lB6t3sj8tbau3Vs45u11exjp2ng0hnG-?usp=drive_link)的 `V1` 目录下载 `best.pt`，放到 `版本记录/V1/best.pt`，再完成 SHA-256 校验。 |
 | checkpoint 格式、profile 或身份不匹配 | 使用本项目 V1 绕杆 checkpoint；源 warmup、源任务最终 Actor 和旧足球专家权重不能直接作为 V1 回放权重。 |
 | 哈希不一致或恢复时配置不匹配 | 核对文件与模型来源；V1 恢复使用原 `B.json`，其他模型使用各自原配置。保留已有身份校验。 |
 | CUDA 不可用 | 先使用 `--device cpu` 回放 / 评估；GPU 训练需通过独立 `pole_task.preflight`，并确认 `hardware.ready: true`。 |
