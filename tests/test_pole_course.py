@@ -84,16 +84,15 @@ def test_reference_layout_order_and_translation_match_the_paired_course(case_id)
 
 def test_nominal_and_held_out_splits_match_registered_acceptance_steps():
     manifest = load_manifest()
-    artifacts = _source_artifacts()
-    result = json.loads(Path(artifacts["passed_result"]).read_text())["gate"]
+    result = json.loads(MANIFEST_PATH.read_text())["passed_result"]
 
     assert manifest["cases"]["nominal-01"]["split"] == "train"
     assert manifest["cases"]["eval-01"]["split"] == "held_out"
-    assert load_course("nominal-01").control_steps == result["nominal_01"]["played_steps"] == 675
-    assert load_course("eval-01").control_steps == result["eval_01"]["played_steps"] == 671
+    assert load_course("nominal-01").control_steps == result["nominal_steps"] == 675
+    assert load_course("eval-01").control_steps == result["held_out_steps"] == 671
 
     for name, steps in (("straight", 198), ("left_turn", 298), ("right_turn", 298)):
-        assert len(load_retention(name)) - 1 == result["retention"][name]["steps"] == steps
+        assert len(load_retention(name)) - 1 == result["retention_steps"][name] == steps
 
 
 def test_training_case_selection_never_accepts_held_out_data():

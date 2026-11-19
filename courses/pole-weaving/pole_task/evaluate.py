@@ -16,16 +16,18 @@ from .source_training import evaluation_cases_for, source_acceptance
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--seed", type=int, default=20261103)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
-    actor, identity = load_pole_actor(args.checkpoint, args.device)
+    actor, identity = load_pole_actor(args.checkpoint, args.device, config_path=args.config)
     output_dir = args.output.parent if args.output else ROOT / "logs/q1-pole-weaving/evaluations"
     robot, motions, cases, config = load_course_bundle(
         COURSE_ROOT / "pole_task/config.json",
         output_dir / "references",
         device=args.device,
+        config=identity["resolved_config"],
     )
     ordered = evaluation_cases_for(config, list(cases.values()))
     reports = evaluate_source_cases(

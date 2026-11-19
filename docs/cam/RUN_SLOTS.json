@@ -1,0 +1,113 @@
+{
+  "experiment": "q1-local-shared-budget",
+  "maximum_slots": 7,
+  "maximum_attempts_per_slot": 2,
+  "slots": [
+    {
+      "group": "B0",
+      "seed": 0,
+      "status": "COMPLETE",
+      "attempts": [
+        {
+          "run_id": "attempt-1",
+          "pid": 46497,
+          "command": [
+            "/home/wangzihe/miniconda3/envs/env_q1/bin/python",
+            "scripts/cam_local.py",
+            "train",
+            "--config",
+            "configs/cam/B0.json",
+            "--output",
+            "logs/q1-pole-weaving/cam-local/v2-initial/B0/seed-0/attempt-1"
+          ],
+          "cwd": "/home/wangzihe/公共/Supermimic_q1_robot/V2",
+          "python": "/home/wangzihe/miniconda3/envs/env_q1/bin/python",
+          "operation": "train",
+          "started_unix": 1795094773.7942653,
+          "status": "COMPLETE",
+          "config": "/home/wangzihe/公共/Supermimic_q1_robot/V2/configs/cam/B0.json",
+          "exit_code": 0,
+          "finished_unix": 1795101582.5479486,
+          "log": "/home/wangzihe/公共/Supermimic_q1_robot/V2/logs/q1-pole-weaving/cam-local/v2-initial/B0/seed-0/attempt-1.log",
+          "record": "logs/q1-pole-weaving/cam-local/v2-initial/B0/seed-0/attempt-1.run.json",
+          "output": "logs/q1-pole-weaving/cam-local/v2-initial/B0/seed-0/attempt-1",
+          "qualified_run_id": "v2-initial/B0/seed-0/attempt-1"
+        }
+      ],
+      "supervision": "user_reported_completion_verified",
+      "last_observed_update": 2500,
+      "last_observed_acceptance_update": 2500,
+      "latest_checkpoint_accepted": false,
+      "selected_checkpoint_update": 2075,
+      "selected_checkpoint_five_case_acceptance": true,
+      "selected_checkpoint_nominal_trials_passed": 20,
+      "analysis": "docs/cam/evidence/b0-results/training-analysis.json",
+      "motion_quality_accepted": false,
+      "motion_quality_feedback": "User reports foot slip, body jitter, forward lean in best; task pass does not imply motion quality pass.",
+      "experiment": "v2-initial"
+    },
+    {
+      "experiment": "lr-replay-v1",
+      "group": "control",
+      "seed": 0,
+      "status": "IMPLEMENTED_PENDING_USER_GPU_PREFLIGHT",
+      "attempts": []
+    },
+    {
+      "experiment": "lr-replay-v1",
+      "group": "low_lr",
+      "seed": 0,
+      "status": "IMPLEMENTED_PENDING_USER_GPU_PREFLIGHT",
+      "attempts": []
+    },
+    {
+      "experiment": "lr-replay-v1",
+      "group": "actor_cosine",
+      "seed": 0,
+      "status": "IMPLEMENTED_PENDING_USER_GPU_PREFLIGHT",
+      "attempts": []
+    }
+  ],
+  "execution_policy": "user_starts_future_training_and_notifies_completion",
+  "active_experiment": "lr-replay-v1",
+  "deferred_original_slots": [
+    {
+      "group": "B_ref",
+      "seed": 0,
+      "status": "DEFERRED_NOT_ADDITIONAL_BUDGET",
+      "attempts": []
+    },
+    {
+      "group": "B_task",
+      "seed": 0,
+      "status": "DEFERRED_NOT_ADDITIONAL_BUDGET",
+      "attempts": []
+    },
+    {
+      "group": "B0",
+      "seed": 1,
+      "status": "DEFERRED_NOT_ADDITIONAL_BUDGET",
+      "attempts": []
+    },
+    {
+      "group": "selected_candidate",
+      "seed": 1,
+      "status": "DEFERRED_NOT_ADDITIONAL_BUDGET",
+      "attempts": []
+    },
+    {
+      "group": "B0",
+      "seed": 2,
+      "status": "DEFERRED_NOT_ADDITIONAL_BUDGET",
+      "attempts": []
+    },
+    {
+      "group": "selected_candidate",
+      "seed": 2,
+      "status": "DEFERRED_NOT_ADDITIONAL_BUDGET",
+      "attempts": []
+    }
+  ],
+  "remaining_unallocated_slots": 3,
+  "budget_note": "One completed original B0 + three newly registered LR/replay pilots = four of seven total slots. Original CAM candidates/seed expansion deferred; no second seven-run budget."
+}

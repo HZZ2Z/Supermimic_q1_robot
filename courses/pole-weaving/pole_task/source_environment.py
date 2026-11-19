@@ -105,6 +105,9 @@ def source_torque_speed_limits(
     return lower, upper
 
 
+from .foot_contact import CONTACT_FORCE_N, SLIP_SPEED_M_S, foot_slip_phase_metrics
+
+
 class SourcePoleEnvironment:
     """Single-environment source Q1 control with paired course poles."""
 
@@ -116,7 +119,9 @@ class SourcePoleEnvironment:
         *,
         seed: int = 0,
         randomize: bool = False,
+        measure_quality: bool = False,
     ):
+        self.measure_quality = measure_quality
         self.case = case
         self.robot = robot
         self.rng = np.random.default_rng(seed)
@@ -183,6 +188,22 @@ class SourcePoleEnvironment:
         )
         if len(self.foot_geoms) == 0 or len(self.floor_geoms) == 0:
             raise ValueError("Source randomization needs foot and floor collision geoms")
+        if self.measure_quality:
+            foot_bodies = [
+                int(self.model.body(f"{side}_ankle_roll_link").id)
+                for side in ("left", "right")
+            ]
+            self._foot_by_geom = {
+                int(geom): foot_bodies.index(int(self.model.geom_bodyid[geom]))
+                for geom in self.foot_geoms
+            }
+            self._floor_ids = set(map(int, self.floor_geoms))
+            self._contact_jacobian = np.zeros((3, self.model.nv))
+            self._contact_force = np.zeros(6)
+            self._foot_contact_totals = np.zeros((2, 4))
+            self._foot_contact_samples: list[np.ndarray] = []
+            if self.model.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4:
+                raise ValueError("Foot contact sampling requires a single-step integrator")
         self.layout = robot.context_layout
         self.context = torch.from_numpy(
             nominal_context(self.layout, 1, "cpu").numpy().copy()
@@ -287,6 +308,9 @@ class SourcePoleEnvironment:
         self.steps = 0
         self.collision = False
         self.pole_contacts.clear()
+        if self.measure_quality:
+            self._foot_contact_totals.fill(0)
+            self._foot_contact_samples.clear()
         return self.state()
 
     @property
@@ -305,6 +329,56 @@ class SourcePoleEnvironment:
         return np.concatenate(
             (self.data.qpos.copy(), qvel, self.action.copy())
         ).astype(np.float32)
+
+    def _record_foot_contacts(self, qvel_before: np.ndarray) -> None:
+        """Measure solved contacts using velocities from the same pre-integration state."""
+        loads, speeds, speed_squares = np.zeros(2), np.zeros(2), np.zeros(2)
+        for index, contact in enumerate(self.data.contact):
+            g1, g2 = int(contact.geom1), int(contact.geom2)
+            foot_geom = (
+                g2 if g1 in self._floor_ids else g1 if g2 in self._floor_ids else None
+            )
+            foot = self._foot_by_geom.get(foot_geom)
+            if foot is None or contact.efc_address < 0:
+                continue
+            mujoco.mj_contactForce(self.model, self.data, index, self._contact_force)
+            load = max(0.0, float(self._contact_force[0]))
+            if load == 0:
+                continue
+            mujoco.mj_jac(
+                self.model, self.data, self._contact_jacobian, None,
+                contact.pos, int(self.model.geom_bodyid[foot_geom]),
+            )
+            velocity = self._contact_jacobian @ qvel_before
+            normal = contact.frame[:3]
+            tangent = velocity - normal * np.dot(velocity, normal)
+            speed_sq = float(np.dot(tangent, tangent))
+            loads[foot] += load
+            speeds[foot] += load * np.sqrt(speed_sq)
+            speed_squares[foot] += load * speed_sq
+        speeds /= np.maximum(loads, 1e-12)
+        speed_squares /= np.maximum(loads, 1e-12)
+        loaded = loads > CONTACT_FORCE_N
+        sample = np.stack(
+            (loaded, loaded * speeds, loaded * speed_squares,
+             loaded & (speeds > SLIP_SPEED_M_S)),
+            axis=-1,
+        )
+        self._foot_contact_totals += self.model.opt.timestep * sample
+        self._foot_contact_samples.append(sample)
+
+    def foot_contact_metrics(self) -> dict:
+        """Aggregate over loaded foot-time, counting both feet during double support."""
+        duration, distance, squared, fast = self._foot_contact_totals.sum(axis=0)
+        return {
+            "foot_contact_time_s": self._foot_contact_totals[:, 0].tolist(),
+            "foot_slip_mean_m_s": float(distance / duration) if duration > 0 else None,
+            "foot_slip_rms_m_s": float(np.sqrt(squared / duration)) if duration > 0 else None,
+            "foot_slip_fraction": float(fast / duration) if duration > 0 else None,
+            "foot_slip_phases": foot_slip_phase_metrics(
+                self._foot_contact_samples, self.model.opt.timestep,
+            ),
+        }
 
     def step(self, action: np.ndarray):
         """Apply one source PD control step; return the next state and contacts."""
@@ -330,7 +404,11 @@ class SourcePoleEnvironment:
                 self.ctrl_limits[:, 0],
                 self.ctrl_limits[:, 1],
             )
+            if self.measure_quality:
+                qvel_before = self.data.qvel.copy()
             mujoco.mj_step(self.model, self.data)
+            if self.measure_quality:
+                self._record_foot_contacts(qvel_before)
             for contact in self.data.contact:
                 if contact.dist > 0:
                     continue

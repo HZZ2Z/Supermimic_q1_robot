@@ -26,6 +26,8 @@ from supermimic.replay import ReplayBatch, TemporalReplay
 from supermimic.reward_tuning import RewardTuningCfg, tuned_reward
 
 from .data import CourseCase, PoleMotions
+from .cam_rewards import CAMReward
+from .local_training import motion_metrics, quality_failures
 from .source_environment import SourcePoleEnvironment
 from .source_profile import (
     SOURCE_ACTION_DIM,
@@ -153,6 +155,8 @@ def run_source_episode(
     observation_noise: bool = False,
     clean_policy_actions: bool = True,
     reward_tuning: RewardTuningCfg = SOURCE_REWARD_TUNING,
+    cam_reward: CAMReward | None = None,
+    measure_quality: bool | None = None,
     max_steps: int | None = None,
     randomize: bool = False,
     show_gui: bool = False,
@@ -168,9 +172,16 @@ def run_source_episode(
         raise ValueError("Clip index is outside the paired motion library")
     if motions.cases[clip].identity != case.identity:
         raise ValueError("Motion clip and rollout case are not the same paired reference")
+    cam_reward = cam_reward or getattr(robot, "cam_reward", None) or CAMReward(robot)
+    quality_profile = getattr(robot, "motion_quality_profile", None)
+    if measure_quality is None:
+        measure_quality = quality_profile is not None
     environment = environment or SourcePoleEnvironment(
-        case, scene_path, robot, seed=seed, randomize=randomize
+        case, scene_path, robot, seed=seed, randomize=randomize, measure_quality=measure_quality
     )
+    if measure_quality and not environment.measure_quality:
+        raise ValueError("Quality evaluation requires contact instrumentation in the environment")
+    measured_references = []
     if environment.case.identity != case.identity:
         raise ValueError("Playback environment does not match the requested case")
     rng = np.random.default_rng(seed)
@@ -229,11 +240,13 @@ def run_source_episode(
 
             next_frame = min(frame + 1, last_frame)
             target = references[:, 0]
+            if measure_quality:
+                measured_references.append(target[0, :57].cpu().numpy().copy())
             reward_state = state
             if clean_policy_actions:
                 previous_action = robot.previous_action_from_observation(history[..., -1, :])
                 reward_state = torch.cat((state[..., :57], previous_action), -1)
-            reward = tuned_reward(
+            reward = cam_reward(
                 robot,
                 reward_state,
                 next_state,
@@ -305,6 +318,13 @@ def run_source_episode(
     result = _episode_result(
         case, environment, states, transitions, steps=len(actions), fall=fall
     )
+    if measure_quality:
+        result.update(environment.foot_contact_metrics())
+        result.update(motion_metrics(states, measured_references, actions, motions.dt))
+        result["task_success"] = result["success"]
+        result["motion_quality_failures"] = quality_failures(result, quality_profile)
+        result["motion_quality_passed"] = not result["motion_quality_failures"]
+        result["success"] = result["task_success"] and result["motion_quality_passed"]
     return SourceEpisode(
         case=case,
         clip=clip,
@@ -442,10 +462,12 @@ class SourcePoleSuperMimic(SuperMimic):
     vendor pin or the soccer profile.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, cam_config=None, **kwargs):
         if kwargs.get("cache_goals", False):
             raise ValueError("Source robot-anchored goals depend on live state and cannot be cached")
         super().__init__(*args, **kwargs)
+        self.cam_reward = CAMReward(self.robot, cam_config)
+        self.robot.cam_reward = self.cam_reward
 
     def _reference_goals(self, references: Tensor) -> Tensor:
         raise RuntimeError("Source robot-anchored goals cannot be cached")
@@ -478,7 +500,7 @@ class SourcePoleSuperMimic(SuperMimic):
             reward_state = torch.cat((state[..., :57], previous_action), -1)
         else:
             reward_state = state
-        reward = tuned_reward(
+        reward = self.cam_reward(
             self.robot,
             reward_state,
             next_state,
@@ -506,6 +528,7 @@ class SourcePoleSuperMimic(SuperMimic):
         critic_minibatches: int = 4,
         *,
         update_actor: bool = True,
+        diagnostic_objectives: bool = False,
     ) -> dict[str, float]:
         """Vendored update flow with the source robot-anchored bootstrap goal.
 
@@ -533,6 +556,13 @@ class SourcePoleSuperMimic(SuperMimic):
         initial_state, initial_history, initial_context = state, history, context
         survival = state.new_ones(len(state))
         objective = state.new_zeros(len(state))
+        if diagnostic_objectives:
+            if not update_actor or self.cam_reward.momentum is None:
+                raise ValueError("Diagnostic objectives require active CAM and Actor graph")
+            self.cam_reward.capture_terms = True
+            base_objective = state.new_zeros(len(state))
+            cam_objective = state.new_zeros(len(state))
+            diagnostic_actions = []
         states, goals, rewards, terminations, values = [], [], [], [], []
         contexts, weights = [], []
         self.actor_optimizer.zero_grad(set_to_none=True)
@@ -578,6 +608,11 @@ class SourcePoleSuperMimic(SuperMimic):
                 termination = torch.where(
                     remaining <= t + 1, torch.ones_like(termination), termination
                 )
+                if diagnostic_objectives:
+                    action, base_term, cam_term = self.cam_reward.last_terms
+                    diagnostic_actions.append(action)
+                    base_objective = base_objective + self.gamma**t * survival * torch.where(active, base_term, 0)
+                    cam_objective = cam_objective + self.gamma**t * survival * torch.where(active, cam_term, 0)
                 objective = objective + self.gamma**t * survival * reward
                 survival = survival * (1 - termination)
                 rewards.append(reward)
@@ -609,6 +644,10 @@ class SourcePoleSuperMimic(SuperMimic):
             if self.normalize_policy_objective:
                 loss = loss / h
             self.distributed.require_finite(loss, "Nonfinite imagined return")
+            if diagnostic_objectives:
+                self.cam_reward.capture_terms = False
+                del self.cam_reward.last_terms
+                return {"base": base_objective.mean() / h, "cam": cam_objective.mean() / h, "actions": diagnostic_actions}
             if update_actor:
                 loss.backward()
         actor_norm = self._update_actor() if update_actor else loss.new_zeros(())

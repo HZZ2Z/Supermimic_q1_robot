@@ -16,6 +16,9 @@ import hashlib
 import json
 from pathlib import Path
 import random
+import signal
+import os
+import sys
 import time
 
 import numpy as np
@@ -33,6 +36,9 @@ from .preflight import preflight
 from .source import verify_source_manifest
 from .source_checkpoint import LoadedSourcePole, load_source_pole
 from .source_profile import SOURCE_HISTORY_FRAMES, SourcePoleRobot
+from .local_training import training_profile, stratified_start_frame, merge_replay_batches, restore_replay_batches, quality_failures, selection_score
+from .experiment import atomic_checkpoint, capture_rng, restore_rng, semantic_hash, source_identity
+from supermimic.replay import TemporalReplay
 from .source_recipe import (
     SourceRecipe,
     SourceStage,
@@ -137,6 +143,10 @@ def _checkpoint_identity(
 ) -> dict:
     return {
         "format": SOURCE_CHECKPOINT_FORMAT,
+        "experiment_schema_version": 2,
+        "semantic_config_sha256": semantic_hash(config),
+        "source_identity": source_identity(),
+        "environment": {"python": sys.version, "torch": str(torch.__version__), "numpy": str(np.__version__), "mujoco": str(__import__("mujoco").__version__)},
         "profile": "pole-weaving",
         "seed": seed,
         "device": device,
@@ -217,7 +227,12 @@ def validate_resume_payload(
         raise ValueError("Resume checkpoint robot XML hash differs from the source contract")
     if identity.get("data_manifest_sha256") != digest(manifest_path):
         raise ValueError("Resume checkpoint was trained on a different pole data manifest")
-    if identity.get("config_sha256") != digest(config_path) or payload.get("config") != config:
+    if identity.get("experiment_schema_version") == 2:
+        if identity.get("semantic_config_sha256") != semantic_hash(config) or semantic_hash(payload["config"]) != semantic_hash(config):
+            raise ValueError("Resume checkpoint configuration differs from the requested pole run")
+        if identity.get("source_identity") != source_identity():
+            raise ValueError("Resume source implementation differs from the frozen experiment")
+    elif identity.get("config_sha256") != digest(config_path) or payload.get("config") != config:
         raise ValueError("Resume checkpoint configuration differs from the requested pole run")
     if payload.get("recipe") != recipe.to_dict():
         raise ValueError("Resume checkpoint training recipe differs from the registered source recipe")
@@ -226,13 +241,14 @@ def validate_resume_payload(
         raise ValueError(
             f"Resume update must be an integer in 0..{recipe.total_updates}, got {update!r}"
         )
-    stage = payload.get("stage")
-    expected = recipe.stage_for_update(min(update + 1, recipe.total_updates)).name
-    if stage != expected:
-        raise ValueError(
-            f"Resume checkpoint stage {stage!r} disagrees with update {update} "
-            f"(expected {expected!r})"
-        )
+    completed = recipe.stage_for_update(max(update, 1)).name
+    next_stage = recipe.stage_for_update(update + 1).name if update < recipe.total_updates else "complete"
+    if payload.get("checkpoint_schema_version") == 2:
+        if (payload.get("completed_updates") != update or payload.get("completed_stage") != completed
+                or payload.get("next_stage") != next_stage or payload.get("stage") != completed):
+            raise ValueError("Resume checkpoint stage boundary disagrees with completed updates")
+    elif payload.get("stage") != completed:
+        raise ValueError("Resume checkpoint stage disagrees with completed update")
     return update
 
 
@@ -257,6 +273,8 @@ def load_resume_checkpoint(
         manifest_path=manifest_path,
         source_manifest_path=source_manifest_path,
     )
+    if payload.get("checkpoint_schema_version") != 2 or not isinstance(payload.get("runtime"), dict):
+        raise ValueError("Legacy checkpoint lacks complete RNG/replay state; use it for evaluation or explicit new initialization, not exact resume")
     if update >= recipe.total_updates:
         raise ValueError(
             f"Resume checkpoint has already completed all {recipe.total_updates} updates"
@@ -275,9 +293,15 @@ def checkpoint_payload(
     best_score: float,
     patience: int,
     evaluation: dict | None = None,
+    runtime: dict | None = None,
 ) -> dict:
     return {
         "format": SOURCE_CHECKPOINT_FORMAT,
+        "checkpoint_schema_version": 2,
+        "completed_updates": int(update),
+        "completed_stage": stage.name,
+        "next_stage": recipe.stage_for_update(update + 1).name if update < recipe.total_updates else "complete",
+        "runtime": runtime,
         "profile": "pole-weaving",
         "stage": stage.name,
         "update": int(update),
@@ -303,9 +327,21 @@ def checkpoint_output_hashes(run_dir: Path) -> dict[str, str]:
         for name, path in (
             ("best", Path(run_dir) / "best.pt"),
             ("latest", Path(run_dir) / "latest.pt"),
+            ("warmup", Path(run_dir) / "warmup.pt"),
         )
         if path.is_file()
     }
+
+
+def carry_best_checkpoint(parent: Path, run_dir: Path, completed_updates: int, best_score: float):
+    if parent.is_file():
+        saved = torch.load(parent, map_location="cpu", weights_only=True)
+        # A bounded warmup snapshot can predate its directory's newer best.
+        eligible = saved["update"] <= completed_updates and saved["best_score"] == best_score
+        del saved
+        if eligible:
+            import shutil
+            shutil.copy2(parent, run_dir / "best.pt")
 
 
 def select_checkpoint(run_dir: Path, *, prefer_best: bool = True) -> Path:
@@ -323,6 +359,9 @@ def select_checkpoint(run_dir: Path, *, prefer_best: bool = True) -> Path:
 
 def source_acceptance(reports: dict, config: dict) -> bool:
     """Source-aligned task 7.7 acceptance used to select the best checkpoint."""
+    profile = training_profile(config)
+    if profile is not None and any(quality_failures(row, profile) for row in reports.values()):
+        return False
     endpoint_limit = float(config.get("course_success_endpoint_m", 0.5))
     rmse_limit = float(config.get("course_success_rmse_m", 0.5))
     retention_limit = float(config.get("retention_rmse_m", 0.3))
@@ -372,6 +411,9 @@ def _collect_episodes(
     episode_counts: dict[str, int],
     action_noise: float,
     budget: TrainingBudget,
+    collection_update: int = 0,
+    profile: dict | None = None,
+    max_steps: int | None = None,
 ) -> list[SourceEpisode]:
     clip_by_case = {case.case_id: index for index, case in enumerate(motions.cases)}
     episodes: list[SourceEpisode] = []
@@ -382,6 +424,10 @@ def _collect_episodes(
         if budget.remaining() <= 0:
             raise RuntimeError("Pole training has no environment-step budget for collection")
         for index in range(count):
+            start = None
+            if profile is not None and stage.actor_updates_enabled:
+                batch_index = (collection_update - stage.start_update) // profile["actor_collection_interval"]
+                start = stratified_start_frame(case.control_steps, batch_index, count, index, seed + index)
             episode = run_source_episode(
                 actor,
                 robot,
@@ -389,7 +435,7 @@ def _collect_episodes(
                 case,
                 clip_by_case[case.case_id],
                 run_dir / f"collection-{case.case_id}.xml",
-                start_frame=None,
+                start_frame=start,
                 seed=seed + index,
                 device=device,
                 action_noise=action_noise,
@@ -397,11 +443,21 @@ def _collect_episodes(
                 clean_policy_actions=True,
                 reward_tuning=SOURCE_REWARD_TUNING,
                 randomize=stage.randomize,
+                measure_quality=False,
+                max_steps=max_steps,
             )
             budget.charge(episode.steps)
             episodes.append(episode)
     if not episodes:
         raise ValueError("Pole training collection produced no episodes")
+    if profile is not None:
+        with (run_dir / "collection.jsonl").open("a") as stream:
+            for episode in episodes:
+                flags = episode.boundaries
+                windows = {name: [int(episode.frames[i+offset]) for i in range(max(0,len(flags)-length+1))
+                           if not flags[i:i+length-1].any()] for name,length,offset in (("model",8,0),("policy",10,9))}
+                stream.write(json.dumps({"collection_update":collection_update,"case_id":episode.case.case_id,
+                    "start_frame":episode.start_frame,"steps":episode.steps,"valid_window_frames":windows}) + "\n")
     return episodes
 
 
@@ -438,6 +494,60 @@ def _evaluate(
     return reports
 
 
+def flat_metrics(values, prefix=""):
+    """Include real evaluation and sampling metrics in the same W&B update."""
+    result = {}
+    for key, value in values.items():
+        name = f"{prefix}/{key}" if prefix else key
+        if isinstance(value, dict):
+            result.update(flat_metrics(value, name))
+        elif isinstance(value, (int, float)) and np.isfinite(value):
+            result[name] = value
+    return result
+
+
+def source_update(algorithm, replay, recipe: SourceRecipe, update: int) -> dict:
+    """One complete source update, shared by training and resource diagnostics."""
+    stage = recipe.stage_for_update(update)
+    rates = recipe.optimizer_rates(update - 1)
+    for name, rate in rates.items():
+        for group in getattr(algorithm, f"{name}_optimizer").param_groups:
+            group["lr"] = rate
+    metrics: dict[str, float] = {}
+    sampled = {"model": {}, "policy": {}}
+    def count_samples(batch, kind):
+        if recipe.local_training_profile is not None:
+            counts = torch.bincount(batch.clips, minlength=len(algorithm.motions.cases)).tolist()
+            for case, count in zip(algorithm.motions.cases, counts):
+                sampled[kind][case.case_id] = sampled[kind].get(case.case_id, 0) + count
+    for _ in range(recipe.model_batches):
+        batch = replay.sample(
+            recipe.model_batch_size,
+            window=8,
+            history=1,
+        )
+        count_samples(batch, "model")
+        metrics.update(algorithm.fit_model(batch))
+    policy_batch = replay.sample(
+        recipe.policy_batch_size,
+        window=1,
+        history=SOURCE_HISTORY_FRAMES,
+    )
+    count_samples(policy_batch, "policy")
+    metrics.update(
+        algorithm.improve_policy(
+            policy_batch,
+            recipe.critic_epochs,
+            recipe.critic_minibatches,
+            update_actor=stage.actor_updates_enabled,
+        )
+    )
+    if recipe.local_training_profile is not None:
+        metrics["sampled_windows"] = sampled
+    metrics.update({name + "_learning_rate": rate for name, rate in rates.items()})
+    return metrics
+
+
 def train_source(
     config_path: Path,
     resume_checkpoint: Path | None = None,
@@ -445,6 +555,7 @@ def train_source(
     max_updates: int | None = None,
     episode_counts: dict[str, int] | None = None,
     device: str | None = None,
+    run_dir: Path | None = None,
 ) -> Path:
     """Train a project pole policy from the registered source warmup.
 
@@ -461,6 +572,19 @@ def train_source(
             + json.dumps(report["hardware"], sort_keys=True)
         )
     config = json.loads(config_path.read_text())
+    if config.get("cam", {}).get("enabled", False):
+        receipt = config.get("cam_calibration")
+        if not isinstance(receipt, dict) or set(receipt) != {"path", "sha256"}:
+            raise ValueError("Formal CAM training requires a frozen calibration receipt")
+        receipt_path = project_path(receipt["path"])
+        if digest(receipt_path) != receipt["sha256"]:
+            raise ValueError("Calibration receipt hash differs")
+        calibration = json.loads(receipt_path.read_text())
+        if calibration.get("optimizer_updates") != 0 or calibration.get("evaluation_case_used") is not False:
+            raise ValueError("Calibration must use only offline training/baseline samples")
+        for name in ("momentum_scale", "tracking_sigma", "tracking_weight"):
+            if config["cam"][name] != calibration[name]:
+                raise ValueError("Formal CAM parameters differ from frozen calibration")
     root = ROOT
     manifest_path = project_path(config["manifest"]).resolve()
     source_manifest_path = project_path(config["source_manifest"]).resolve()
@@ -485,7 +609,9 @@ def train_source(
         torch.cuda.set_device(device)
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
 
+    profile = recipe.local_training_profile
     robot = loaded.robot.to(device)
+    robot.motion_quality_profile = profile
     actor = loaded.actor.to(device)
     world = loaded.world_model.to(device)
     critic = loaded.critic.to(device)
@@ -493,13 +619,28 @@ def train_source(
         config, manifest_path=manifest_path
     )
     output_root = (root / config["output_root"]).resolve()
-    run_dir = output_root / time.strftime("run-%Y%m%d-%H%M%S")
-    suffix = 0
-    while run_dir.exists():
-        suffix += 1
-        run_dir = output_root / f"{time.strftime('run-%Y%m%d-%H%M%S')}-{suffix}"
+    if run_dir is None:
+        run_dir = output_root / time.strftime("run-%Y%m%d-%H%M%S")
+        suffix = 0
+        while run_dir.exists():
+            suffix += 1
+            run_dir = output_root / f"{time.strftime('run-%Y%m%d-%H%M%S')}-{suffix}"
+    run_dir = Path(run_dir).resolve()
+    if output_root != run_dir.parent and output_root not in run_dir.parents:
+        raise ValueError("Run directory must be inside configured output_root")
     run_dir.mkdir(parents=True, exist_ok=False)
+    stop_requested = []
+    handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    for sig in handlers:
+        signal.signal(sig, lambda signum, frame: stop_requested.append(signum))
+    wandb_run = None
     try:
+        atomic_json(run_dir / "run.json", {"pid": os.getpid(), "command": sys.argv, "python": sys.executable, "cwd": str(Path.cwd()), "status": "TRAINING", "started_unix": time.time()})
+        if config.get("wandb_mode") == "offline":
+            rng_before_logging = capture_rng()
+            import wandb
+            wandb_run = wandb.init(project="q1-cam-local", mode="offline", dir=str(run_dir), config=config, name="/".join(run_dir.parts[-4:]))
+            restore_rng(rng_before_logging)
         motion_dir = run_dir / "references"
         paths = [
             write_vendor_motion(case, motion_dir / f"{case.case_id}.npz")
@@ -518,6 +659,7 @@ def train_source(
             learning_rate=recipe.model_optimizer.learning_rate,
             horizon=recipe.imagination_horizon,
             reward_tuning=SOURCE_REWARD_TUNING,
+            cam_config=config.get("cam"),
             clean_policy_actions=recipe.clean_policy_actions,
             normalize_policy_objective=True,
             normalize_model_objective=True,
@@ -561,35 +703,50 @@ def train_source(
             device=device,
             resume_checkpoint=resume_checkpoint,
         )
+        if resume_checkpoint is not None:
+            parent_best = Path(resume_checkpoint).parent / "best.pt"
+            carry_best_checkpoint(parent_best, run_dir, completed_updates, best_score)
         identity["resumed_from_update"] = completed_updates
         atomic_json(run_dir / "identity.json", identity)
         (run_dir / "config.json").write_text(json.dumps(config, indent=2) + "\n")
 
-        budget = TrainingBudget(int(config.get("max_environment_steps", 2_000_000)))
+        runtime = resume_payload["runtime"] if resume_payload is not None else None
+        budget = TrainingBudget(int(config.get("max_environment_steps", 2_000_000)), int(runtime["environment_steps"]) if runtime else 0)
         counts = _episode_counts(config, training_cases)
         if episode_counts:
             counts.update({case_id: int(value) for case_id, value in episode_counts.items()})
         action_noise = float(config.get("action_noise", 0.0))
         next_update = completed_updates + 1
-        current_stage = recipe.stage_for_update(
-            min(next_update, recipe.total_updates)
-        )
+        current_stage = recipe.stage_for_update(max(completed_updates, 1) if runtime else next_update)
         if current_stage.freeze_pole_input_columns:
             freeze_pole_input_columns(actor)
-        episodes = _collect_episodes(
-            actor,
-            robot,
-            motions,
-            training_cases,
-            run_dir,
-            stage=current_stage,
-            seed=seed + 1000,
-            device=device,
-            episode_counts=counts,
-            action_noise=action_noise,
-            budget=budget,
-        )
-        replay = make_source_replay(episodes, robot, clip_by_case, device=device)
+        if runtime:
+            replay_state = runtime["replay"]
+            if runtime["replay_stage"] != current_stage.name:
+                raise ValueError("Saved replay stage does not match completed stage")
+            replay = TemporalReplay(capacity=replay_state["capacity"], num_envs=1, state_dim=79, context_dim=149, obs_dim=78, device=device)
+            replay.load_state_dict(replay_state)
+            restore_rng(runtime["rng"])
+        else:
+            episodes = _collect_episodes(actor, robot, motions, training_cases, run_dir, stage=current_stage,
+                seed=seed + 1000, device=device, episode_counts=counts, action_noise=action_noise, budget=budget,
+                **({"profile":profile,"collection_update":next_update} if profile else {}))
+            replay = make_source_replay(episodes, robot, clip_by_case, device=device)
+
+        if profile is not None:
+            if runtime:
+                batches = restore_replay_batches(runtime)
+                collection_steps = runtime["collection_environment_steps"]
+            else:
+                batches = [(next_update, replay.state_dict())]
+                collection_steps = replay.count
+
+        def runtime_state():
+            state = {"rng": capture_rng(), "replay": replay.state_dict(), "replay_stage": current_stage.name, "environment_steps": budget.steps}
+            if profile is not None:
+                state.update(replay_batches=[{"update":u,"count":b["count"]} for u,b in batches], collection_environment_steps=collection_steps)
+            return state
+
         stop_reason = None
         metrics_path = run_dir / "metrics.jsonl"
         limit = recipe.total_updates if max_updates is None else int(max_updates)
@@ -597,51 +754,35 @@ def train_source(
         last_update = completed_updates
         for update in range(next_update, limit + 1):
             stage = recipe.stage_for_update(update)
-            if stage.name != current_stage.name:
+            changed_stage = stage.name != current_stage.name
+            if changed_stage:
                 current_stage = stage
+                if profile is not None:
+                    patience = 0
                 if stage.freeze_pole_input_columns:
                     freeze_pole_input_columns(actor)
-                # Each source stage has its own collection physics; do not fit
-                # actor-stage updates on deterministic warmup transitions.
-                episodes = _collect_episodes(
-                    actor,
-                    robot,
-                    motions,
-                    training_cases,
-                    run_dir,
-                    stage=stage,
-                    seed=seed + 1000 + update,
-                    device=device,
-                    episode_counts=counts,
-                    action_noise=action_noise,
-                    budget=budget,
-                )
-                replay = make_source_replay(episodes, robot, clip_by_case, device=device)
+            refresh = (profile is not None and stage.actor_updates_enabled
+                       and update != next_update
+                       and (update-stage.start_update) % profile["actor_collection_interval"] == 0)
+            # On resume at a refresh boundary the saved batch still belongs to the previous update.
+            if profile is not None and runtime and stage.actor_updates_enabled and update == next_update:
+                refresh = (update-stage.start_update) % profile["actor_collection_interval"] == 0 and batches[-1][0] != update
+            if changed_stage or refresh:
+                new_episodes = _collect_episodes(
+                    actor, robot, motions, training_cases, run_dir, stage=stage,
+                    seed=seed+1000+update, device=device, episode_counts=counts,
+                    action_noise=action_noise, budget=budget,
+                    **({"profile":profile,"collection_update":update} if profile else {}))
+                new_replay = make_source_replay(new_episodes, robot, clip_by_case, device=device)
+                if profile is None:
+                    replay = new_replay
+                else:
+                    collection_steps += new_replay.count
+                    batches = ([] if changed_stage else batches[-1:]) + [(update, new_replay.state_dict())]
+                    replay = merge_replay_batches(batches, device)
+                del new_episodes, new_replay
+            metrics = source_update(algorithm, replay, recipe, update)
             rates = recipe.optimizer_rates(update - 1)
-            for name, rate in rates.items():
-                for group in getattr(algorithm, f"{name}_optimizer").param_groups:
-                    group["lr"] = rate
-            metrics: dict[str, float] = {}
-            for _ in range(recipe.model_batches):
-                batch = replay.sample(
-                    recipe.model_batch_size,
-                    window=8,
-                    history=1,
-                )
-                metrics.update(algorithm.fit_model(batch))
-            policy_batch = replay.sample(
-                recipe.policy_batch_size,
-                window=1,
-                history=SOURCE_HISTORY_FRAMES,
-            )
-            metrics.update(
-                algorithm.improve_policy(
-                    policy_batch,
-                    recipe.critic_epochs,
-                    recipe.critic_minibatches,
-                    update_actor=stage.actor_updates_enabled,
-                )
-            )
             last_update = update
             metrics.update(
                 {
@@ -655,6 +796,13 @@ def train_source(
                     "environment_steps": budget.steps,
                 }
             )
+            if profile is not None:
+                metrics.update(collection_environment_steps=collection_steps, replay_transitions=replay.count,
+                               replay_batch_updates=[u for u,_ in batches],
+                               replay_case_transitions={case.case_id:int((replay.clips[:replay.count]==clip_by_case[case.case_id]).sum()) for case in training_cases})
+            if not all(np.isfinite(value) for value in metrics.values() if isinstance(value, (float, int))):
+                raise FloatingPointError("Non-finite training metrics")
+            print(json.dumps(metrics, sort_keys=True), flush=True)
             should_evaluate = (
                 update % evaluation_interval == 0
                 or update == recipe.total_updates
@@ -673,13 +821,10 @@ def train_source(
                     device=device,
                     budget=budget,
                 )
-                score = sum(
-                    row["root_xy_rmse_m"]
-                    for row in evaluation.values()
-                    if isinstance(row, dict) and "root_xy_rmse_m" in row
-                )
+                score = selection_score(evaluation, profile)
                 accepted = source_acceptance(evaluation, config)
-                if accepted and score < best_score:
+                improved = accepted and score < best_score
+                if improved:
                     best_score, patience = score, 0
                 else:
                     patience += 1
@@ -699,17 +844,26 @@ def train_source(
                     best_score=best_score,
                     patience=patience,
                     evaluation=evaluation,
+                    runtime=runtime_state(),
                 )
-                torch.save(payload, run_dir / "latest.pt")
-                if accepted and score <= best_score:
-                    torch.save(payload, run_dir / "best.pt")
-                if patience >= int(config.get("success_patience", 100)):
-                    stop_reason = {
-                        "reason": "success_patience_exhausted",
-                        "update": update,
-                        "best_score": best_score,
-                    }
-                    break
+                atomic_checkpoint(run_dir / "latest.pt", payload)
+                if improved or (profile is None and accepted and score <= best_score):
+                    atomic_checkpoint(run_dir / "best.pt", payload)
+                if profile is not None and not stage.actor_updates_enabled and update == stage.end_update:
+                    atomic_checkpoint(run_dir / "warmup.pt", payload)
+            if not should_evaluate:
+                with metrics_path.open("a") as stream:
+                    stream.write(json.dumps(metrics, sort_keys=True) + "\n")
+            if wandb_run is not None:
+                rng_before_logging = capture_rng()
+                wandb_run.log(flat_metrics(metrics), step=update)
+                restore_rng(rng_before_logging)
+            if should_evaluate and patience >= int(config.get("success_patience", 100)):
+                stop_reason = {"reason":"success_patience_exhausted","update":update,"best_score":best_score}
+                break
+            if stop_requested:
+                stop_reason = {"reason": "requested_stop", "signal": stop_requested[-1], "update": update}
+                break
             if budget.remaining() <= 0:
                 stop_reason = {
                     "reason": "max_environment_steps",
@@ -737,8 +891,9 @@ def train_source(
                     stage=recipe.stage_for_update(last_update),
                     best_score=best_score,
                     patience=patience,
+                    runtime=runtime_state(),
                 )
-                torch.save(payload, run_dir / "latest.pt")
+                atomic_checkpoint(run_dir / "latest.pt", payload)
         stop_reason = stop_reason or {
             "reason": "recipe_exhausted" if last_update == recipe.total_updates else "update_limit",
             "update": last_update,
@@ -760,6 +915,9 @@ def train_source(
             }
         )
         atomic_json(run_dir / "identity.json", identity)
+        record = json.loads((run_dir / "run.json").read_text())
+        record.update(status="COMPLETE" if last_update == recipe.total_updates else "STOPPED", finished_unix=time.time(), exit_code=0)
+        atomic_json(run_dir / "run.json", record)
         return run_dir
     except Exception:
         # Keep the failure visible without publishing a checkpoint or identity
@@ -768,7 +926,15 @@ def train_source(
             run_dir / "failure.json",
             {"error": "training failed", "exception": repr(__import__("sys").exc_info()[1])},
         )
+        record = json.loads((run_dir / "run.json").read_text()) if (run_dir / "run.json").exists() else {}
+        record.update(status="FAILED", finished_unix=time.time(), exit_code=1)
+        atomic_json(run_dir / "run.json", record)
         raise
+    finally:
+        if wandb_run is not None:
+            wandb_run.finish()
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
 
 
 def main(argv=None) -> int:

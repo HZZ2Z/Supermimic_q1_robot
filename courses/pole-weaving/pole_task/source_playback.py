@@ -9,6 +9,8 @@ from . import COURSE_ROOT, ROOT, project_path
 from .data import CourseCase, PoleMotions, write_vendor_motion
 from .source import source_robot_xml
 from .source_profile import SourcePoleRobot
+from .cam_rewards import CAMReward
+from .local_training import training_profile
 from .source_training import load_training_cases
 
 
@@ -17,10 +19,10 @@ def load_course_bundle(
     reference_dir: Path | None = None,
     *,
     device: str = "cpu",
+    config: dict | None = None,
 ) -> tuple[SourcePoleRobot, PoleMotions, dict[str, CourseCase], dict]:
     """Load the registered paired references without any policy weights."""
-    config_path = Path(config_path).resolve()
-    config = json.loads(config_path.read_text())
+    config = json.loads(Path(config_path).resolve().read_text()) if config is None else config
     root = ROOT
     manifest_path = project_path(config["manifest"]).resolve()
     source_manifest_path = project_path(config["source_manifest"]).resolve()
@@ -28,6 +30,8 @@ def load_course_bundle(
         config, manifest_path=manifest_path
     )
     robot = SourcePoleRobot(source_robot_xml(source_manifest_path)).to(device)
+    robot.cam_reward = CAMReward(robot, config.get("cam"))
+    robot.motion_quality_profile = training_profile(config)
     reference_dir = Path(reference_dir or root / "logs/q1-pole-weaving/references")
     paths = [
         write_vendor_motion(case, Path(reference_dir) / f"{case.case_id}.npz")

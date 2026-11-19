@@ -10,7 +10,7 @@ rate, optimizer, or pole-input trust region.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import math
 from pathlib import Path
@@ -81,6 +81,8 @@ class SourceRecipe:
     modeled_action_delay: bool
     learning_rate_period_updates: int
     learning_rate_floor: float
+    local_resource_profile: dict | None = None
+    local_training_profile: dict | None = None
 
     @property
     def total_updates(self) -> int:
@@ -119,14 +121,25 @@ class SourceRecipe:
     def optimizer_rates(self, iteration: int) -> dict[str, float]:
         """Learning rates scheduled for the model, actor, and critic."""
         factor = self.learning_rate_factor(iteration)
-        return {
+        rates = {
             "model": self.model_optimizer.learning_rate * factor,
             "actor": self.actor_optimizer.learning_rate * factor,
             "critic": self.critic_optimizer.learning_rate * factor,
         }
+        if self.local_training_profile is not None:
+            profile = self.local_training_profile
+            actor_stage = next(stage for stage in self.stages if stage.actor_updates_enabled)
+            elapsed = max(0, iteration - (actor_stage.start_update - 1))
+            progress = min(elapsed / max(1, actor_stage.updates - 1), 1.)
+            actor_factor = 1.
+            if profile["actor_schedule"] == "cosine":
+                floor = profile["actor_final_ratio"]
+                actor_factor = floor + (1-floor)*.5*(1+math.cos(math.pi*progress))
+            rates["actor"] = self.actor_optimizer.learning_rate * actor_factor
+        return rates
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "format": self.format,
             "source_revision": self.source_revision,
             "warmup_checkpoint_id": self.warmup_checkpoint_id,
@@ -165,6 +178,16 @@ class SourceRecipe:
                 "floor": self.learning_rate_floor,
             },
         }
+        if self.local_resource_profile is not None:
+            result["local_resource_profile"] = self.local_resource_profile
+        if self.local_training_profile is not None:
+            result["local_training_profile"] = self.local_training_profile
+        if self.local_resource_profile is not None or self.local_training_profile is not None:
+            result["verified_source_recipe"] = replace(
+                self, model_batch_size=512, policy_batch_size=512,
+                actor_optimizer=replace(self.actor_optimizer, learning_rate=1e-5),
+                local_resource_profile=None, local_training_profile=None).to_dict()
+        return result
 
 
 def _optimizer_dict(settings: OptimizerSettings) -> dict:
@@ -235,19 +258,19 @@ def _source_train_config(artifact_paths: dict[str, str], artifact_id: str) -> di
 
 
 def resolve_source_recipe(
-    config_path: Path,
+    config_path: Path | None,
     *,
+    config: dict | None = None,
     project_root: Path | None = None,
     purpose: str = "runtime",
 ) -> SourceRecipe:
     """Resolve and cross-check the task 7.7 recipe from project config + manifest."""
-    config_path = Path(config_path).resolve()
     root = (
         Path(project_root).resolve()
         if project_root is not None
         else ROOT
     )
-    config = json.loads(config_path.read_text())
+    config = json.loads(Path(config_path).resolve().read_text()) if config is None else config
     settings = config.get("source_training")
     if not isinstance(settings, dict):
         raise ValueError("Pole config must define a source_training recipe")
@@ -372,7 +395,7 @@ def resolve_source_recipe(
     _expect(critic_optimizer.betas, (0.9, 0.999), "Critic optimizer betas")
     _expect(actor_optimizer.betas, (0.9, 0.95), "Actor optimizer betas")
 
-    return SourceRecipe(
+    recipe = SourceRecipe(
         format="supermimic_source_task_7_7_recipe_v1",
         source_revision=report["source_revision"],
         warmup_checkpoint_id=report["warmup_checkpoint_id"],
@@ -403,6 +426,21 @@ def resolve_source_recipe(
         learning_rate_period_updates=period,
         learning_rate_floor=floor,
     )
+
+    from .cam_rewards import CAMConfig
+    CAMConfig.parse(config.get("cam"))
+    profile = config.get("local_resource_profile")
+    if profile is not None and (not isinstance(profile, dict) or set(profile) != {"schema_version", "batch_size"}
+            or type(profile["schema_version"]) is not int or profile["schema_version"] != 1
+            or type(profile["batch_size"]) is not int or profile["batch_size"] not in (512, 256, 128)):
+        raise ValueError("local_resource_profile requires schema_version=1 and batch_size=512/256/128 only")
+    if profile is not None:
+        recipe = replace(recipe, model_batch_size=profile["batch_size"], policy_batch_size=profile["batch_size"], local_resource_profile=dict(profile))
+    from .local_training import training_profile
+    local = training_profile(config)
+    if local is not None:
+        recipe = replace(recipe, actor_optimizer=replace(recipe.actor_optimizer, learning_rate=local["actor_learning_rate"]), local_training_profile=local)
+    return recipe
 
 
 def pole_input_columns(

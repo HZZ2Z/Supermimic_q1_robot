@@ -1,5 +1,13 @@
 # Supermimic_q1_robot
 
+当前服务器交付分支为 `V2_sicc`，包含 CAM 基础实现与 `lr-replay-v1` 三组学习率/采样诊断。当前实验关闭 CAM，采用 V1 四段起点、每25次 Actor 更新刷新及最近两批 replay；不启用 damping。
+
+- [服务器启动说明](docs/cam/SICC_RUNBOOK.md)
+- [三组实验配置、质量门槛与运行命令](docs/cam/LR_REPLAY_RUNBOOK.md)
+- [实施记录与验证状态](docs/cam/IMPLEMENTATION_REPORT.md)
+
+训练日志、模型权重、W&B 离线数据及本机诊断产物不随 Git 发布。下文保留原研究目标；当前执行范围以以上运行说明为准。
+
 
 
 基于mohismlab提供的supermimic baseline: https://github.com/MohismLab/master_project_q1_robot_soccer

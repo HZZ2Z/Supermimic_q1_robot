@@ -21,6 +21,7 @@ def main(argv=None):
         choices=("nominal-01", "eval-01", "straight", "left_turn", "right_turn"),
         default="nominal-01",
     )
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--seed", type=int, default=20261103)
     parser.add_argument(
@@ -34,13 +35,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.loops < 1:
         parser.error("--loops must be at least 1")
-    actor, identity = load_pole_actor(args.checkpoint, args.device)
+    actor, identity = load_pole_actor(args.checkpoint, args.device, config_path=args.config)
     output = args.output or ROOT / "logs/q1-pole-weaving/playback.json"
     output_dir = output.parent
     robot, motions, cases, _ = load_course_bundle(
         COURSE_ROOT / "pole_task/config.json",
         output_dir / "references",
         device=args.device,
+        config=identity["resolved_config"],
     )
     if args.case not in cases:
         raise ValueError(f"Pole playback case {args.case!r} is not registered")
@@ -50,7 +52,7 @@ def main(argv=None):
         if motion_case.case_id == args.case
     )
     scene_path = output_dir / "pole-playback.xml"
-    environment = SourcePoleEnvironment(case, scene_path, robot, seed=args.seed)
+    environment = SourcePoleEnvironment(case, scene_path, robot, seed=args.seed, measure_quality=robot.motion_quality_profile is not None)
     episodes = []
     with source_playback_viewer(environment, args.gui) as viewer:
         for index in range(args.loops):

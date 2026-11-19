@@ -20,6 +20,7 @@ from .source_profile import SourcePoleRobot
 from .source_recipe import resolve_source_recipe
 from .source_training import SOURCE_CHECKPOINT_FORMAT
 from .models import build_source_models
+from .experiment import checkpoint_config
 
 SOURCE_ACTOR_PARITY_TOLERANCE = 1e-6
 
@@ -32,7 +33,7 @@ def load_pole_actor(
     checkpoint_path: Path,
     device: str = "cpu",
     *,
-    config_path: Path = COURSE_ROOT / "pole_task/config.json",
+    config_path: Path | None = None,
 ) -> tuple[torch.nn.Module, dict]:
     """Load a source-profile actor from a project-trained pole checkpoint."""
     checkpoint_path = Path(checkpoint_path).expanduser().resolve()
@@ -69,13 +70,14 @@ def load_pole_actor(
             "Pole checkpoint lineage does not prove the source final actor was never loaded"
         )
 
-    config_path = Path(config_path).resolve()
-    config = json.loads(config_path.read_text())
+    config = checkpoint_config(saved, config_path)
     root = ROOT
     source_manifest_path = project_path(config["source_manifest"]).resolve()
     report = verify_source_manifest(source_manifest_path, purpose="runtime")
     manifest = json.loads(source_manifest_path.read_text())
-    recipe = resolve_source_recipe(config_path, project_root=root, purpose="runtime")
+    recipe = resolve_source_recipe(config_path, config=config, project_root=root, purpose="runtime")
+    if identity.get("experiment_schema_version") == 2 and saved.get("recipe") != recipe.to_dict():
+        raise ValueError("Checkpoint execution recipe differs from its experiment configuration")
     if identity.get("source_warmup_checkpoint_sha256") != recipe.warmup_checkpoint_sha256:
         raise ValueError("Pole checkpoint was initialized from a different source warmup")
     if identity.get("source_revision") != recipe.source_revision:
@@ -103,6 +105,7 @@ def load_pole_actor(
     provenance = dict(identity)
     provenance.update(
         {
+            "resolved_config": config,
             "checkpoint_sha256": _sha256(checkpoint_path),
             "checkpoint_path": str(checkpoint_path),
             "checkpoint_format": checkpoint_format,

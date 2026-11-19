@@ -12,13 +12,17 @@ from .source_playback import load_course_bundle
 from .source_runtime import evaluate_source_cases, run_source_episode
 from .source_training import evaluation_cases_for, source_acceptance
 
+from .local_training import training_profile, quality_failures
+
 DEFAULT_TRIALS = 20
 
 
 def nominal_trial_passes(row: dict, config: dict) -> bool:
     """Source nominal acceptance for one deterministic playback trial."""
+    profile = training_profile(config)
     return bool(
-        row["route_completed"]
+        (profile is None or not quality_failures(row, profile))
+        and row["route_completed"]
         and not row["pole_collision"]
         and not row["fall"]
         and row["endpoint_distance_m"] <= float(config.get("course_success_endpoint_m", 0.5))
@@ -124,12 +128,13 @@ def full_acceptance(
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--seed", type=int, default=20261103)
     parser.add_argument("--trials", type=int, default=DEFAULT_TRIALS)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
-    actor, identity = load_pole_actor(args.checkpoint, args.device)
+    actor, identity = load_pole_actor(args.checkpoint, args.device, config_path=args.config)
     output_dir = (
         args.output.parent
         if args.output
@@ -139,6 +144,7 @@ def main(argv=None):
         COURSE_ROOT / "pole_task/config.json",
         output_dir / "references",
         device=args.device,
+        config=identity["resolved_config"],
     )
     result = {
         "checkpoint": identity,

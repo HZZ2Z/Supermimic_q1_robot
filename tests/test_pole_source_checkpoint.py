@@ -80,8 +80,8 @@ def test_strict_loader_records_deterministic_mappings_and_source_identity():
 
 def test_strict_loader_rejects_the_source_final_actor_as_initialization(tmp_path):
     manifest = json.loads(MANIFEST_PATH.read_text())
-    manifest["source_root"] = str(
-        (MANIFEST_PATH.parent / manifest["source_root"]).resolve()
+    manifest["asset_root"] = str(
+        (MANIFEST_PATH.parent / manifest["asset_root"]).resolve()
     )
     manifest["warmup_checkpoint_id"] = manifest["final_checkpoint_reference_id"]
     path = tmp_path / "manifest.json"
@@ -106,7 +106,7 @@ def _minimal_source_manifest(tmp_path: Path, checkpoint: dict) -> Path:
     config_path.write_text("[train]\n")
 
     manifest = dict(real)
-    manifest["source_root"] = str(source)
+    manifest["asset_root"] = str(source)
     manifest["robot_contract"] = dict(real["robot_contract"])
     manifest["robot_contract"]["xml_sha256"] = _sha256(robot_xml)
     manifest["training_contract"] = dict(real["training_contract"])

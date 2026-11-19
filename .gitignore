@@ -18,6 +18,10 @@ checkpoints/
 *.onnx
 *.log
 
+# Local experiment evidence and machine-specific agent instructions
+/docs/cam/evidence/
+/Agent.md
+
 # Video and simulator output
 video/
 videos/
